@@ -2,7 +2,7 @@
 
 -include ("couchbeam.hrl").
 
--record (document, {db, doc, doc_id, current_step, job_length, job_step_do}).
+-record (document, {db, doc, doc_id, current_step, job_length, job_step_do, job_step_list}).
 
 -export ([start/3, start/1, work_manager/1, worker/0]).
 
@@ -35,8 +35,6 @@ start_workmanager() ->
     WorkManagerPid = spawn_link(?MODULE, work_manager, [5]),
     register(workmanager, WorkManagerPid),
     WorkManagerPid.
-    
-
 
 %%Starts a continuous changes stream, and sends the change notification to a work manager.
 get_changes(ReqId, Db, WorkManagerPid) ->
@@ -79,28 +77,11 @@ work_manager_loop(Workers) ->
                                               doc = Doc,
                                               doc_id = DocId,
                                               current_step = CurrentStepNumber,
-                                              job_length = length(JobStepList)
+                                              job_length = length(JobStepList),
+                                              job_step_list = JobStepList
                                               },
-                    case (DocInfo#document.job_length<DocInfo#document.current_step + 1) of %Bryt ut, gör snyggt.
-                        false ->
-                            CurrentJobStep = get_current_job_step(JobStepList, CurrentStepNumber),
-                            JobStepDo = get_do(CurrentJobStep),
-                            print("The do: ~p", [JobStepDo]),
-                            UpdatedDocInfo = DocInfo#document{job_step_do = JobStepDo},
-                            NewWorkers = case get_free_worker(Workers) of
-                                            {WorkerPid, free} ->
-                                                print("The worker pid: ~p",[WorkerPid]),
-                                                WorkerPid ! {work, self(), UpdatedDocInfo},
-                                                lists:keyreplace(WorkerPid, 1, Workers, {WorkerPid, occupied});
-                                            false -> 
-                                                print("No free workers, what to do?"),
-                                                Workers
-                                        end,
-                            work_manager_loop(NewWorkers);
-                        true -> 
-                            print("Job done"),
-                            work_manager_loop(Workers)
-                    end;
+                    UpdatedWorkers = give_job_to_worker(Workers, DocInfo),
+                    work_manager_loop(UpdatedWorkers);
             	{error, not_found} ->
             		print("Doc deleted?..."),
                     work_manager_loop(Workers)
@@ -113,6 +94,32 @@ start_workers(N, Workers) when N>0 ->
     start_workers(N - 1, [{WorkerPid, free} | Workers]);
 start_workers(0, Workers) ->
     Workers.
+
+job_is_complete(DocInfo) ->
+    DocInfo#document.job_length < DocInfo#document.current_step + 1.
+
+give_job_to_worker(Workers, DocInfo) ->
+    case job_is_complete(DocInfo) of %Bryt ut, gör snyggt.
+        false ->
+            CurrentJobStep = get_current_job_step(DocInfo#document.job_step_list, DocInfo#document.current_step),
+            JobStepDo = get_do(CurrentJobStep),
+            print("The do: ~p", [JobStepDo]),
+            UpdatedDocInfo = DocInfo#document{job_step_do = JobStepDo},
+            NewWorkers = case get_free_worker(Workers) of
+                            {WorkerPid, free} ->
+                                print("The worker pid: ~p",[WorkerPid]),
+                                WorkerPid ! {work, self(), UpdatedDocInfo},
+                                lists:keyreplace(WorkerPid, 1, Workers, {WorkerPid, occupied});
+                            false -> 
+                                %What to do if no free workers?XXX
+                                print("No free workers, what to do?"),
+                                Workers
+                        end,
+            NewWorkers;
+        true -> 
+            print("Job done"),
+            Workers
+    end.
 
 %%Worker
 worker() ->
@@ -149,7 +156,7 @@ get_do(CurrentJobStep) ->
 get_target(CurrentJobStep) ->
     {Step} = CurrentJobStep,
     {<<"target">>, Target} = lists:keyfind(<<"target">>, 1, Step),
-    binary_to_list(Target).  
+    binary_to_list(Target).
 
 get_field(Field, Doc) ->
     couchbeam_doc:get_value(list_to_binary(Field), Doc).
