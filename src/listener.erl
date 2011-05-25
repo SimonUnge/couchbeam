@@ -18,7 +18,7 @@ start(Host, Port, Name) ->
   WorkManagerPid = start_workmanager(), %I do not use workmanagerpid, do I?
 get_changes(ReqId, Db, WorkManagerPid).
 
-%%Just for testing purposes. 
+%%Just for testing purposes.
 start(Database) when is_atom(Database)->
   case Database of
     reg_a ->
