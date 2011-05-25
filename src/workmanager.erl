@@ -70,7 +70,8 @@ handle_has_winner(Workers, DocInfo) ->
   case is_winner(DocInfo) of
     true ->
       print("I am winner"),
-      %nu ska det det finnas en worker reserverat för detta step
+      %nu ska det det finnas en worker reserverat för detta step, om det inte har krashat?
+      %SKA Testar att ge den en process. Farligt? XXX
       give_job_to_reserved_worker(Workers, DocInfo);
     false ->
       %frigör eventuell bokad worker.
