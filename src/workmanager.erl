@@ -271,10 +271,10 @@ set_key_on_doc(DocInfo, Key, Value) ->
 %%==== To get job list, change value of key, and return an updated job list, or DocInfo?
 update_job_step_list(DocInfo, Key, Value) ->
   {CurrJobStep} = get_current_job_step(DocInfo),
-  UpdatedCurrJobStep = lists:keyreplace(list_to_binary(Key), 
-                                        1, 
-                                        CurrJobStep, 
-                                        {list_to_binary(Key), 
+  UpdatedCurrJobStep = lists:keyreplace(list_to_binary(Key),
+                                        1,
+                                        CurrJobStep,
+                                        {list_to_binary(Key),
                                         list_to_binary(Value)}
                                        ),
   Updated_Job_List = setnth(DocInfo#document.current_step + 1, %THis I hate, + 1, XXX
