@@ -59,7 +59,7 @@ has_free_workers(Workers) ->
   case get_free_worker(Workers) of
     false ->
       false;
-    Worker ->
+    _Worker ->
       true
   end.
    
@@ -141,6 +141,26 @@ update_job_step_list(DocInfo, Key, Value) ->
 %% @doc Replaces element on index Index with Element
 setnth(1, [_|Rest], New) -> [New|Rest];
 setnth(I, [E|Rest], New) -> [E|setnth(I-1, Rest, New)].
+
+do_work(Do, Retries) ->
+  P = open_port({spawn, Do}, [exit_status]),
+  case get_status(P) of
+    {exit_status, Status} when Status =:= 0 ->
+      Status;
+    {exit_status, _Status} when Retries > 0 ->
+      do_work(Do, Retries - 1);
+    {exit_status, Status} ->
+      Status
+  end. 
+
+get_status(P) ->
+  receive
+    {P, {exit_status, Status}} ->
+      {exit_status, Status};
+    {P, Any} ->
+      io:format("This is what I got: ~p ~n", [Any]),
+      get_status(P)
+  end.
 
 %%==== just to have a nicer fuckning print. Hates io:format ====
 print(String) ->

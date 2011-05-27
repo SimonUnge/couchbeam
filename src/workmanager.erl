@@ -1,7 +1,7 @@
 -module (workmanager).
 -export ([work_manager/1, setnth/3]).
 
--record (document, {db, doc, doc_id, current_step, job_length, job_step_do, job_step_list}).
+-record (document, {db, doc, doc_id, current_step, job_length, job_step_do, job_step_list, sleep_time}).
 
 work_manager(N) ->
   Workers = start_workers(N, []),
@@ -18,18 +18,23 @@ start_workers(0, Workers) ->
 work_manager_loop(Workers) ->
   receive
     {status, WorkerPid, Doc_Info, Status} ->
-      print("Status from worker ~p: ~p",[WorkerPid, Status]),
+      print("Status from worker ~p: ~p, on doc: ~p",[WorkerPid, Status, Doc_Info#document.doc_id]),
       NewWorkers = change_worker_status(WorkerPid, Workers, free, null),
+      print("freed worker ~p, worker list is now: ~p",[WorkerPid, NewWorkers]),
       UpdatedDocInfo = increment_step(Doc_Info),
+      print("Saving complete job step for doc: ~p", [UpdatedDocInfo#document.doc_id]),
       save_doc(UpdatedDocInfo),
       work_manager_loop(NewWorkers);
     {changes, Change, Db} ->
       DocId = get_id(Change),
+      print("WM got change for doc_id: ~p,~n Will try to open.",[DocId]),
       case couchbeam:open_doc(Db, DocId) of
         {ok, Doc} ->
+          print("Doc was opened!"),
           CurrentStepNumber = get_field("step", Doc),
           print("The current step: ~p", [CurrentStepNumber]),
           JobStepList = get_field("job", Doc),
+          %Här borde jag nästan läsa in allt.XXX
           DocInfo = #document{db = Db,
                               doc = Doc,
                               doc_id = DocId,
@@ -37,8 +42,9 @@ work_manager_loop(Workers) ->
                               job_length = length(JobStepList),
                               job_step_list = JobStepList
                              },
-          print("Worker status list: ~p", [Workers]),
+          print("Worker status list before handle job: ~p", [Workers]),
           UpdatedWorkers = handle_job(Workers, DocInfo),
+          print("And the worker status list after handle job, before loop:~p", [UpdatedWorkers]),
           work_manager_loop(UpdatedWorkers);
         {error, not_found} ->
           print("Doc deleted?..."),
@@ -49,6 +55,7 @@ work_manager_loop(Workers) ->
 handle_job(Workers, DocInfo) ->
   case is_job_complete(DocInfo) of
     false -> %There are still steps that have not been executed.
+      print("job is not complete, inspecting winner"),
       inspect_winner_and_handle(Workers, DocInfo);
     true ->
       print("Job done"),
@@ -58,44 +65,59 @@ handle_job(Workers, DocInfo) ->
 inspect_winner_and_handle(Workers, DocInfo) ->
   case has_winner(DocInfo) of
     true ->
-      print("Job have a winner"),
+      print("Job have a winner, handle has winner"),
       handle_has_winner(Workers, DocInfo);
     false ->
     %kolla om det är till alla,
-      print("Job does not have a winner"),
+      print("Job does not have a winner, inspect and claim"),
       inspect_claim_and_handle(Workers, DocInfo)
   end.
 
 handle_has_winner(Workers, DocInfo) ->
   case is_winner(DocInfo) of
     true ->
-      print("I am winner"),
+      print("I am winner, handle is winner"),
       %nu ska det det finnas en worker reserverat för detta step, om det inte har krashat?
-      %SKA Testar att ge den en process. Farligt? XXX
-      give_job_to_reserved_worker(Workers, DocInfo);
+      %SKA Test att ge den en process. Farligt? XXX
+      handle_is_winner(Workers, DocInfo);
     false ->
       %frigör eventuell bokad worker.
-      print("I am not winner"),
+      print("I am not winner, release workers"),
       release_worker(Workers, DocInfo)
+  end.
+
+handle_is_winner(Workers, DocInfo) ->
+  case have_reserved_worker(Workers, DocInfo) of
+    true -> 
+      print("I am winner, and have a reserved worker for this doc,step,workerlist: ~p, ~p, ~p",[DocInfo#document.doc_id,
+                                                                                                DocInfo#document.current_step,
+                                                                                                Workers]),
+      print("Giving job to reserved worker"),
+      give_job_to_reserved_worker(Workers, DocInfo);
+    false ->
+      print("I am winner, but have no worker reserved. Removes claim and winner, resaves doc."),
+      UpdatedDocInfo = remove_claim_and_winner(DocInfo),
+      save_doc(UpdatedDocInfo),
+      Workers
   end.
 
 inspect_claim_and_handle(Workers, DocInfo) ->
   case is_claimed(DocInfo) of
     true ->
-      print("Step is claimed already"),
+      print("Step is claimed already, returning workers"),
       Workers;
     false ->
-      print("Step is not claimed, checking workers etc..."),
+      print("Step is not claimed, inspect target and handle..."),
       inspect_target_and_handle(Workers, DocInfo)
   end.  
 
 inspect_target_and_handle(Workers, DocInfo) ->
   case is_target_any(DocInfo) of
     true ->
-      print("Any is target"),
+      print("Any is target, handle any target"),
       handle_any_target(Workers, DocInfo);
     false ->
-      print("there is a specific target"),
+      print("there is a specific target, handle spcigic target"),
       handle_specific_target(Workers, DocInfo)
   end.
 
@@ -105,29 +127,35 @@ handle_any_target(Workers, DocInfo) ->
       print("there are free workers, setting claim"),
       UpdatedDocInfo = set_claim(DocInfo),
       UpdatedWorkers = book_worker(Workers, UpdatedDocInfo),
+      print("And I have now booked a worker for job:~p ~n Workerlist:~p ",[UpdatedDocInfo#document.doc_id, UpdatedWorkers]),
       save_doc(UpdatedDocInfo),
       UpdatedWorkers;
     false ->
+      %XXX Keeping the doc alive by saving it again. But should I increment some value, and then why?
+      print("No free workers, resaves doc with 5 sec keep alive..."),
+      create_keep_alive(DocInfo),
       Workers
   end.
 
 handle_specific_target(Workers, DocInfo) ->
   case is_target_me(DocInfo) of
     true ->
-      print("I am target"),
+      print("I am target, handle me target"),
       handle_me_target(Workers, DocInfo);
     false ->
-      print("I am not target..."),
+      print("I am not target, doing nothing..."),
       Workers
   end.
 
 handle_me_target(Workers, DocInfo) ->
   case has_free_workers(Workers) of
     true ->
-      print("I am target and has workers"),
+      print("I am target (so gives work to worker) and has workers, see: ~p", [Workers]),
       give_job_to_worker(Workers, DocInfo);
     false ->
-      print("I am target but has no workers"),
+      print("I am target but has no workers, resaves doc with 5 sec keep alive"),
+      %XXX Keeping the doc alive by saving it again. But should I increment some value, and then why?
+      create_keep_alive(DocInfo),
       Workers
   end.
 %%==== Worker Helpers =====
@@ -135,7 +163,6 @@ handle_me_target(Workers, DocInfo) ->
 give_job_to_worker(Workers, DocInfo) ->
   CurrentJobStep = get_current_job_step(DocInfo),
   JobStepDo = get_do(CurrentJobStep),
-  print("The do: ~p", [JobStepDo]),
   UpdatedDocInfo = DocInfo#document{job_step_do = JobStepDo},
   {WorkerPid, free, _DocId} = get_free_worker(Workers), 
   print("The worker pid: ~p",[WorkerPid]),
@@ -145,14 +172,18 @@ give_job_to_worker(Workers, DocInfo) ->
 give_job_to_reserved_worker(Workers, DocInfo) ->
   CurrentJobStep = get_current_job_step(DocInfo),
   JobStepDo = get_do(CurrentJobStep),
-  print("The do: ~p", [JobStepDo]),
   UpdatedDocInfo = DocInfo#document{job_step_do = JobStepDo},
   Doc_Id = UpdatedDocInfo#document.doc_id,
-  {WorkerPid, booked, Doc_Id} = get_reserved_worker(Workers, UpdatedDocInfo),
-  WorkerPid ! {work, self(), UpdatedDocInfo},
-  change_worker_status(WorkerPid, Workers, busy, UpdatedDocInfo#document.doc_id).
+  print("WHY DO I ALWAYS CRASH HERE? With DOCID = ~p", [Doc_Id]),
+  case get_reserved_worker(Workers, UpdatedDocInfo) of
+    {WorkerPid, booked, Doc_Id} ->  
+      WorkerPid ! {work, self(), UpdatedDocInfo},
+      change_worker_status(WorkerPid, Workers, busy, UpdatedDocInfo#document.doc_id);
+    {WorkerPid, Status, Doc_Id} ->
+      print("for some reason, Im already doing this job..."),
+      Workers
+  end.
   
-
 change_worker_status(WorkerPid, Workers, NewStatus, DocId) ->
   lists:keyreplace(WorkerPid, 1, Workers, {WorkerPid, NewStatus, DocId}).
 
@@ -172,6 +203,16 @@ release_worker(Workers, DocInfo) ->
       Workers
   end.
 
+remove_claim_and_winner(DocInfo) ->
+  print("removing my claim"),
+  UpdatedDocInfo = update_job_step_list(DocInfo, "claimed_by", null),
+  print("...and removing me as winner"),
+  update_job_step_list(UpdatedDocInfo, "winner", null).
+
+create_keep_alive(DocInfo) ->
+  print("I am create keep alive. I will now spawn a process to save the document ~p after 5 sec:", [DocInfo#document.doc_id]),
+  Pid = spawn(keepdocalive, keep_doc_alive, [DocInfo]),
+  print("Spawned, with Pid: ~p", [Pid]).
 %%=========================  
 
 is_job_complete(DocInfo) ->
@@ -208,9 +249,22 @@ has_free_workers(Workers) ->
       true
   end.
 
-save_doc(DocInfo) ->
-  couchbeam:save_doc(DocInfo#document.db, DocInfo#document.doc).
+have_reserved_worker(Workers, DocInfo) ->
+  case get_reserved_worker(Workers, DocInfo) of
+    false ->
+      false;
+    _Worker ->
+      true
+  end.
 
+save_doc(DocInfo) ->
+  case couchbeam:save_doc(DocInfo#document.db, DocInfo#document.doc) of
+    {ok, NewDoc} ->
+      print("Saving doc id:~p",[DocInfo#document.doc_id]),
+      NewDoc;
+    {error, conflict} ->
+      print("Save conflict!!!!!!!!!!")
+  end.
 %%===== Getters =====
 
 get_id(Change) ->
@@ -235,7 +289,7 @@ get_field(Field, Doc) ->
 get_free_worker(Workers) ->
   lists:keyfind(free, 2, Workers).
 
-get_reserved_worker(Workers, DocInfo) ->
+get_reserved_worker(Workers, DocInfo) ->%XXX är jag dum i huvudet? jag plockar ju ut workers, oavsett status.
   lists:keyfind(DocInfo#document.doc_id, 3, Workers).
 
 get_current_job_step(DocInfo) -> %XXX Change order of args?
@@ -254,7 +308,7 @@ get_winner_status(DocInfo) ->
 %%==== SETTERS ====
 set_claim(DocInfo) ->
   {_,_,DbId,_} = DocInfo#document.db,
-  update_job_step_list(DocInfo, "claimed_by", DbId).
+  update_job_step_list(DocInfo, "claimed_by", list_to_binary(DbId)).
 
 increment_step(DocInfo) ->
   DocInfo#document{doc = set_key_on_doc(DocInfo,
@@ -275,7 +329,7 @@ update_job_step_list(DocInfo, Key, Value) ->
                                         1,
                                         CurrJobStep,
                                         {list_to_binary(Key),
-                                        list_to_binary(Value)}
+                                        Value}
                                        ),
   Updated_Job_List = setnth(DocInfo#document.current_step + 1, %THis I hate, + 1, XXX
                             DocInfo#document.job_step_list, 

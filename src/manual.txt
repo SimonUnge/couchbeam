@@ -7,7 +7,7 @@ Name = "reg_a".
    application:start(couchbeam),
    Server = couchbeam:server_connection(Host, Port),
 {ok, Db} = couchbeam:open_or_create_db(Server, Name),
-{ok, Doc} = couchbeam:open_doc(Db,"0fa10eb459328173bd882aacad3e8ccc").
+{ok, Doc} = couchbeam:open_doc(Db,"2c65d2ef35f481a1677282a0c53dc3aa").
 
 
 How it looks for erlang:

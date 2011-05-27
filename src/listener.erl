@@ -2,7 +2,7 @@
 
 -include ("couchbeam.hrl").
 
--record (document, {db, doc, doc_id, current_step, job_length, job_step_do, job_step_list}).
+-record (document, {db, doc, doc_id, current_step, job_length, job_step_do, job_step_list, sleep_time}).
 
 -export ([start/3, start/1]).
 
@@ -31,7 +31,7 @@ start(Database) when is_atom(Database)->
 
 %% Process starters?
 start_workmanager() ->
-  process_flag(trap_exit, true),
+  %process_flag(trap_exit, true),
   WorkManagerPid = spawn_link(workmanager, work_manager, [5]),
   register(workmanager, WorkManagerPid),
   WorkManagerPid.
@@ -44,8 +44,10 @@ get_changes(ReqId, Db, WorkManagerPid) ->
       NewPid= start_workmanager(),
       get_changes(ReqId, Db, NewPid);
     {ReqId, done} ->
+      print("listener done?"),
       ok;
     {ReqId, {change, Change}} ->
+      print("Listener got change."),
       workmanager ! {changes, Change, Db},
       get_changes(ReqId, Db, WorkManagerPid);
     {ReqId, {error, E}}->
