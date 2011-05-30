@@ -160,6 +160,7 @@ handle_specific_target(Workers, DocInfo) ->
     true ->
       print("I am target, handle me target"),
       handle_me_target(Workers, DocInfo);
+    false ->
       print("I am not target, doing nothing..."),
       Workers
   end.
