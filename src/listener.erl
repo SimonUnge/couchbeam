@@ -31,7 +31,6 @@ start(Database) when is_atom(Database)->
 start_workmanager() ->
   %process_flag(trap_exit, true),
   WorkManagerPid = spawn_link(workmanager, work_manager, [5]),
-  register(workmanager, WorkManagerPid),
   WorkManagerPid.
 
 %%Starts a continuous changes stream, and sends the change notification to a work manager.
@@ -46,7 +45,7 @@ get_changes(ReqId, Db, WorkManagerPid) ->
       ok;
     {ReqId, {change, Change}} ->
       print("Listener got change."),
-      workmanager ! {changes, Change, Db},
+      WorkManagerPid ! {changes, Change, Db},
       get_changes(ReqId, Db, WorkManagerPid);
     {ReqId, {error, E}}->
       print("error ? ~p", [E])
