@@ -2,8 +2,6 @@
 
 -include ("couchbeam.hrl").
 
--record (document, {db, doc, doc_id, current_step, job_length, job_step_do, job_step_list, sleep_time}).
-
 -export ([start/3, start/1]).
 
 start(Host, Port, Name) ->
@@ -41,7 +39,7 @@ get_changes(ReqId, Db, WorkManagerPid) ->
   receive
     {'EXIT', WorkManagerPid, Reson} ->
       print("~p died, and here is why: ~p",[WorkManagerPid, Reson]),
-      NewPid= start_workmanager(),
+      NewPid = start_workmanager(),
       get_changes(ReqId, Db, NewPid);
     {ReqId, done} ->
       print("listener done?"),

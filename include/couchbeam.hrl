@@ -23,6 +23,19 @@
 %% Uncomment if it's not compiling.
 %% -type boolean() :: bool()
 
+%%This is addad by me, the listener creator. 
+-record (document, {
+    db,
+    server, 
+    doc, 
+    doc_id,
+    current_step, 
+    job_length, 
+    job_step_do, 
+    job_step_list,
+    retry_strategy = 3
+}).
+%% End of listener adds.
 
 -record(server, {
     host :: string(),
