@@ -1,7 +1,6 @@
 -module (tests).
 -compile (export_all).
-
--record (document, {db, doc, doc_id, current_step, job_length, job_step_do, job_step_list}).
+-include ("couchbeam.hrl").
 
 start() ->
   Host = "localhost",

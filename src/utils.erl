@@ -113,7 +113,8 @@ set_step_finish_time(DocInfo) ->
 
 set_step_winner(DocInfo) ->
   Winner = get_claim_status(DocInfo),
-  DocInfo#document{doc = set_key_on_doc(DocInfo, "creator", Winner)}.
+  print("XXXXXXXThe winner~p",[Winner]),
+  update_job_step_list(DocInfo, "winner", Winner).
 
 increment_step(DocInfo) ->
   DocInfo#document{doc = set_key_on_doc(DocInfo,
