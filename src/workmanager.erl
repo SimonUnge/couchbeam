@@ -122,12 +122,24 @@ handle_is_winner(Workers, DocInfo) ->
 inspect_claim_and_handle(Workers, DocInfo) ->
   case is_claimed(DocInfo) of
     true ->
-      print("Step is claimed already, returning workers"),
-      Workers;
+      print("Job is claimed, checkning if I am creator"),
+      handle_is_claimed(Workers, DocInfo);
     false ->
       print("Step is not claimed, inspect target and handle..."),
       inspect_target_and_handle(Workers, DocInfo)
-  end.  
+  end.
+
+handle_is_claimed(Workers, DocInfo) ->
+  case is_job_creator(DocInfo) of
+    true ->
+      print("I am the creator, setting winner, saves doc, returns workers"),
+      UpdDocInfo = utils:set_step_winner(DocInfo),
+      save_doc(UpdDocInfo),
+      Workers;
+    false ->
+      print("I am not the creator, returns workers."),
+      Workers
+  end.
 
 inspect_target_and_handle(Workers, DocInfo) ->
   case is_target_any(DocInfo) of
@@ -270,6 +282,11 @@ is_target_me(DocInfo) ->
   Target = get_target(DocInfo),
   {_,_,DbId,_} = DocInfo#document.db,
   Target =:= DbId.
+
+is_job_creator(DocInfo) ->
+  Creator = get_field("creator", DocInfo#document.doc),
+  {_,_,DbId,_} = DocInfo#document.db,
+  Creator =:= list_to_binary(DbId).
 
 has_free_workers(Workers) ->
   case get_free_worker(Workers) of

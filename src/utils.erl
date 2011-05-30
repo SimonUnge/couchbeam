@@ -20,6 +20,7 @@
           set_job_step_execution_time/2,
           set_step_start_time/1,
           set_step_finish_time/1,
+          set_step_winner/1,
           update_job_step_list/3,
           setnth/3
           ]).
@@ -109,6 +110,10 @@ set_step_finish_time(DocInfo) ->
   {H, M, S} = time(),
   FinishTime = integer_to_list(H) ++ ":" ++ integer_to_list(M) ++ ":" ++ integer_to_list(S),
   update_job_step_list(DocInfo, "finish_time", list_to_binary(FinishTime)).
+
+set_step_winner(DocInfo) ->
+  Winner = get_claim_status(DocInfo),
+  update_job_step_list(DocInfo, "creator", Winner).
 
 increment_step(DocInfo) ->
   DocInfo#document{doc = set_key_on_doc(DocInfo,
