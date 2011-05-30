@@ -66,7 +66,7 @@ handle_job(Workers, DocInfo) ->
       inspect_step_and_handle(Workers, DocInfo);
     true ->
       print("Job done"),
-      Workers
+      release_worker(Workers, DocInfo)
   end.
 
 inspect_step_and_handle(Workers, DocInfo) ->
