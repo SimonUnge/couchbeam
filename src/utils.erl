@@ -113,7 +113,7 @@ set_step_finish_time(DocInfo) ->
 
 set_step_winner(DocInfo) ->
   Winner = get_claim_status(DocInfo),
-  update_job_step_list(DocInfo, "creator", Winner).
+  DocInfo#document{doc = set_key_on_doc(DocInfo, "creator", Winner).
 
 increment_step(DocInfo) ->
   DocInfo#document{doc = set_key_on_doc(DocInfo,
