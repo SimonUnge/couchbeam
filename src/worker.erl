@@ -7,6 +7,7 @@ worker() ->
   receive
     {work, From, DocInfo} ->
       Retries = DocInfo#document.retry_strategy,
+      print("Retryis looks like this:~p",[Retries]),
       {ExecTime, Status} = timer:tc(worker, do_work, [DocInfo, Retries]),
       From ! {status, self(), DocInfo, {ExecTime, Status}},
       worker()
@@ -16,7 +17,7 @@ do_work(DocInfo, Retries) ->
   P = open_port({spawn, DocInfo#document.job_step_do}, [exit_status]),
   case get_status(P) of
     {exit_status, Status} when Status =:= 0 ->
-      Status;
+      Status;%%Alternativ step
     {exit_status, _Status} when Retries > 0 ->
       print("work failed, retry"),
       do_work(DocInfo, Retries - 1);

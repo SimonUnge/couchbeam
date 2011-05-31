@@ -189,19 +189,21 @@ handle_me_target(Workers, DocInfo) ->
       Workers
   end.
 %%==== Worker Helpers =====
-
+%%XXX ej testad?
 give_job_to_worker(Workers, DocInfo) ->
   CurrentJobStep = get_current_job_step(DocInfo),
   JobStepDo = get_do(CurrentJobStep),
+  RetryStrategy = get_retry_strategy(CurrentJobStep),
   {WorkerPid, free, _DocId} = get_free_worker(Workers), 
   UpdDocInfo1 = DocInfo#document{job_step_do = JobStepDo},%XXX EGEN FUNKTION, SOM NEEEDAN
-  UpdDocInfo2 = utils:set_executioner(UpdDocInfo1, WorkerPid),
-  UpdDocInfo3 = utils:set_step_start_time(UpdDocInfo2),%%Move to worker?
-  UpdDocInfo4 = utils:set_job_step_status(UpdDocInfo3, "Working"),
+  UpdDocInfo2 = DocInfo#document{retry_strategy = RetryStrategy},
+  UpdDocInfo3 = utils:set_executioner(UpdDocInfo2, WorkerPid),
+  UpdDocInfo4 = utils:set_step_start_time(UpdDocInfo3),%%Move to worker?
+  UpdDocInfo5 = utils:set_job_step_status(UpdDocInfo4, "Working"),
   print("The worker pid: ~p",[WorkerPid]),
-  UpdDocInfo5 = save_doc(UpdDocInfo4),
-  WorkerPid ! {work, self(), UpdDocInfo5},
-  change_worker_status(WorkerPid, Workers, busy, UpdDocInfo5#document.doc_id).
+  UpdDocInfo6 = save_doc(UpdDocInfo5),
+  WorkerPid ! {work, self(), UpdDocInfo6},
+  change_worker_status(WorkerPid, Workers, busy, UpdDocInfo6#document.doc_id).
 
 give_job_to_reserved_worker(Workers, DocInfo) ->
   Doc_Id = DocInfo#document.doc_id,
@@ -210,13 +212,15 @@ give_job_to_reserved_worker(Workers, DocInfo) ->
     {WorkerPid, booked, Doc_Id} ->
       CurrentJobStep = get_current_job_step(DocInfo),
       JobStepDo = get_do(CurrentJobStep),
+      RetryStrategy = get_retry_strategy(CurrentJobStep),
       UpdDocInfo1 = DocInfo#document{job_step_do = JobStepDo},%%%XXX EGEN FUNKTION
-      UpdDocInfo2 = utils:set_executioner(UpdDocInfo1, WorkerPid),
-      UpdDocInfo3 = utils:set_step_start_time(UpdDocInfo2),%%Move to worker?
-      UpdDocInfo4 = utils:set_job_step_status(UpdDocInfo3, "Working"),
-      UpdDocInfo5 = save_doc(UpdDocInfo4),
-      WorkerPid ! {work, self(), UpdDocInfo5},
-      change_worker_status(WorkerPid, Workers, busy, UpdDocInfo5#document.doc_id);
+      UpdDocInfo2 = DocInfo#document{retry_strategy = RetryStrategy},
+      UpdDocInfo3 = utils:set_executioner(UpdDocInfo2, WorkerPid),
+      UpdDocInfo4 = utils:set_step_start_time(UpdDocInfo3),%%Move to worker?
+      UpdDocInfo5 = utils:set_job_step_status(UpdDocInfo4, "Working"),
+      UpdDocInfo6 = save_doc(UpdDocInfo5),
+      WorkerPid ! {work, self(), UpdDocInfo6},
+      change_worker_status(WorkerPid, Workers, busy, UpdDocInfo6#document.doc_id);
     {_WorkerPid, _Status, Doc_Id} ->
       print("for some reason, Im already doing this job..."),
       Workers
@@ -320,7 +324,7 @@ get_id(Change) ->
   {<<"id">>, ID} = lists:keyfind(<<"id">>, 1, Doc),
   binary_to_list(ID).
 
-%? Merge with get_id?
+%? Merge with get_id? XXX SE ÖVER DETTA, LIKNANDE TAR OLIKA ARGUMENT!!!
 get_do(CurrentJobStep) ->
   {Step} = CurrentJobStep,
   {<<"do">>, DO} = lists:keyfind(<<"do">>, 1, Step),
@@ -330,6 +334,11 @@ get_target(DocInfo) ->
   {CurrentJobStep} = get_current_job_step(DocInfo),
   {<<"target">>, Target} = lists:keyfind(<<"target">>, 1, CurrentJobStep),
   binary_to_list(Target).
+
+get_retry_strategy(CurrentJobStep) ->
+  {Step} = CurrentJobStep,
+  {<<"retry_strategy">>, RetryStrategy} = lists:keyfind(<<"retry_strategy">>, 1, Step),
+  binary_to_list(RetryStrategy). 
 
 get_field(Field, Doc) ->
   couchbeam_doc:get_value(list_to_binary(Field), Doc).
