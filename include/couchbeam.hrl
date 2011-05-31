@@ -31,9 +31,9 @@
     doc_id,
     current_step, 
     job_length, 
-    job_step_do, 
+    job_step_do,
     job_step_list,
-    retry_strategy = 3
+    retry_strategy
 }).
 %% End of listener adds.
 

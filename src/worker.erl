@@ -6,23 +6,26 @@
 worker() ->
   receive
     {work, From, DocInfo} ->
-      Retries = DocInfo#document.retry_strategy,
-      print("Retryis looks like this:~p",[Retries]),
-      {ExecTime, Status} = timer:tc(worker, do_work, [DocInfo, Retries]),
+      RetryStrategies = retrieve_strategies(DocInfo#document.retry_strategy),
+
+      {ExecTime, Status} = timer:tc(worker, do_work, [DocInfo, RetryStrategies]),
+
       From ! {status, self(), DocInfo, {ExecTime, Status}},
       worker()
   end.
 
-do_work(DocInfo, Retries) ->
+do_work(DocInfo, {MaxR, MaxT, Sleep, SleepF,SleepM}) ->
   P = open_port({spawn, DocInfo#document.job_step_do}, [exit_status]),
   case get_status(P) of
     {exit_status, Status} when Status =:= 0 ->
-      Status;%%Alternativ step
-    {exit_status, _Status} when Retries > 0 ->
+      Status;%%All went well.
+    {exit_status, _Status} when MaxR > 0 ->
       print("work failed, retry"),
-      do_work(DocInfo, Retries - 1);
+      NewSleep = sleep_strategy(Sleep, SleepF, SleepM),
+
+      do_work(DocInfo, {MaxR - 1, MaxT, NewSleep, SleepF, SleepM});
     {exit_status, Status} ->
-      Status
+      Status%%alternative do?
   end. 
 
 get_status(P) ->
@@ -33,6 +36,33 @@ get_status(P) ->
       print("This is what I got: ~p", [Any]),
       get_status(P)
   end.
+
+sleep_strategy(Sleep, SleepFactor, SleepMax) ->
+  case Sleep of
+    null ->
+      Sleep;
+    Integer ->
+      print("Worker will now sleep for ~p seconds",[Integer]),
+      timer:sleep(Integer * 1000),
+      new_sleep(Sleep, SleepFactor, SleepMax)
+  end.
+
+new_sleep(Sleep, SleepFactor, SleepMax) ->
+  NewSleep = Sleep * SleepFactor,
+  if
+    NewSleep < SleepMax ->
+      NewSleep;
+    NewSleep >= SleepMax ->
+      SleepMax
+  end.
+
+retrieve_strategies(RetryStrategies) ->
+  {_, MaxRetries}       = lists:keyfind(<<"max_retries">>,  1, RetryStrategies),
+  {_, MaxTime}          = lists:keyfind(<<"max_time">>,     1, RetryStrategies),
+  {_, Sleep}            = lists:keyfind(<<"sleep">>,        1, RetryStrategies),
+  {_, SleepFactor}      = lists:keyfind(<<"sleep_factor">>, 1, RetryStrategies),
+  {_, SleepMax}         = lists:keyfind(<<"sleep_max">>,    1, RetryStrategies),
+  {MaxRetries, MaxTime, Sleep, SleepFactor, SleepMax}.
 
 %%== just to have a nicer, quicker, print. Hates io:format
 print(String) ->
