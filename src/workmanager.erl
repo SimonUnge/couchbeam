@@ -17,16 +17,27 @@ start_workers(0, Workers) ->
 work_manager_loop(Workers) ->
   receive
     {status, WorkerPid, DocInfo, {ExecTime, Status}} ->
-      print("Status from worker ~p: ~p, on doc: ~p",[WorkerPid, Status, DocInfo#document.doc_id]),
-      UpdDocInfo1 = utils:set_step_finish_time(DocInfo),
-      UpdDocInfo2 = utils:set_job_step_execution_time(UpdDocInfo1, ExecTime/1000000),
-      UpdDocInfo3 = utils:set_job_step_status(UpdDocInfo2, "Finished"),
-      NewWorkers = change_worker_status(WorkerPid, Workers, free, null),
-      print("freed worker ~p, worker list is now: ~p",[WorkerPid, NewWorkers]),
-      UpdatedDocInfo = increment_step(UpdDocInfo3),
-      print("Saving complete job step for doc: ~p", [UpdatedDocInfo#document.doc_id]),
-      save_doc(UpdatedDocInfo),
-      work_manager_loop(NewWorkers);
+      case Status =:= 0 of
+        false ->
+          UpdDocInfo1 = utils:set_step_finish_time(DocInfo),
+          UpdDocInfo2 = utils:set_job_step_execution_time(UpdDocInfo1, ExecTime/1000000),
+          UpdDocInfo3 = utils:set_job_step_status(UpdDocInfo2, "Failed"),
+          NewWorkers = change_worker_status(WorkerPid, Workers, free, null),
+          UpdatedDocInfo = job_step_failed(UpdDocInfo3),
+          save_doc(UpdatedDocInfo),
+          work_manager_loop(NewWorkers)          ;
+        true ->
+          print("Status from worker ~p: ~p, on doc: ~p",[WorkerPid, Status, DocInfo#document.doc_id]),
+          UpdDocInfo1 = utils:set_step_finish_time(DocInfo),
+          UpdDocInfo2 = utils:set_job_step_execution_time(UpdDocInfo1, ExecTime/1000000),
+          UpdDocInfo3 = utils:set_job_step_status(UpdDocInfo2, "Finished"),
+          NewWorkers = change_worker_status(WorkerPid, Workers, free, null),
+          print("freed worker ~p, worker list is now: ~p",[WorkerPid, NewWorkers]),
+          UpdatedDocInfo = increment_step(UpdDocInfo3),
+          print("Saving complete job step for doc: ~p", [UpdatedDocInfo#document.doc_id]),
+          save_doc(UpdatedDocInfo),
+          work_manager_loop(NewWorkers)
+      end; 
     {changes, Change, Db} ->
       DocId = get_id(Change),
       print("WM got change for doc_id: ~p,~n Will try to open.",[DocId]),
@@ -377,6 +388,16 @@ increment_step(DocInfo) ->
                                         "step",
                                         DocInfo#document.current_step + 1)
                   }.
+
+set_step_to_max(DocInfo) ->
+  DocInfo#document{doc = set_key_on_doc(DocInfo, "step", DocInfo#document.job_length)}.
+
+set_job_failed(DocInfo) ->
+  DocInfo#document{doc = set_key_on_doc(DocInfo,
+                                        "job_status", 
+                                        list_to_binary("failed"))
+                          }.
+
 set_key_on_doc(DocInfo, Key, Value) ->
   couchbeam_doc:set_value(list_to_binary(Key),
                            Value,
@@ -403,6 +424,10 @@ update_job_step_list(DocInfo, Key, Value) ->
 %% @doc Replaces element on index Index with Element
 setnth(1, [_|Rest], New) -> [New|Rest];
 setnth(I, [E|Rest], New) -> [E|setnth(I-1, Rest, New)].
+
+job_step_failed(DocInfo) ->
+  UpdDocInfo = set_step_to_max(DocInfo),
+  set_job_failed(UpdDocInfo).
 
 %%==== just to have a nicer fuckning print. Hates io:format ====
 print(String) ->
