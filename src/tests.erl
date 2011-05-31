@@ -17,7 +17,7 @@ start() ->
   DocInfo = #document{db = Db, 
              doc = Doc, 
              doc_id = "testdoc", 
-             current_step = get_field("step", Doc), 
+             current_step = get_field("step", Doc),
              job_length = length(JobStepList), 
              job_step_do = lists:nth(get_field("step", Doc)+1, JobStepList),
              job_step_list = JobStepList}.

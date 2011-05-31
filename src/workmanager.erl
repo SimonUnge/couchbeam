@@ -193,11 +193,11 @@ handle_me_target(Workers, DocInfo) ->
 give_job_to_worker(Workers, DocInfo) ->
   CurrentJobStep = get_current_job_step(DocInfo),
   JobStepDo = get_do(CurrentJobStep),
+  {WorkerPid, free, _DocId} = get_free_worker(Workers), 
   UpdDocInfo1 = DocInfo#document{job_step_do = JobStepDo},%XXX EGEN FUNKTION, SOM NEEEDAN
-  UpdDocInfo2 = utils:set_executioner(UpdDocInfo1),
+  UpdDocInfo2 = utils:set_executioner(UpdDocInfo1, WorkerPid),
   UpdDocInfo3 = utils:set_step_start_time(UpdDocInfo2),%%Move to worker?
   UpdDocInfo4 = utils:set_job_step_status(UpdDocInfo3, "Working"),
-  {WorkerPid, free, _DocId} = get_free_worker(Workers), 
   print("The worker pid: ~p",[WorkerPid]),
   UpdDocInfo5 = save_doc(UpdDocInfo4),
   WorkerPid ! {work, self(), UpdDocInfo5},
@@ -211,7 +211,7 @@ give_job_to_reserved_worker(Workers, DocInfo) ->
       CurrentJobStep = get_current_job_step(DocInfo),
       JobStepDo = get_do(CurrentJobStep),
       UpdDocInfo1 = DocInfo#document{job_step_do = JobStepDo},%%%XXX EGEN FUNKTION
-      UpdDocInfo2 = utils:set_executioner(UpdDocInfo1),
+      UpdDocInfo2 = utils:set_executioner(UpdDocInfo1, WorkerPid),
       UpdDocInfo3 = utils:set_step_start_time(UpdDocInfo2),%%Move to worker?
       UpdDocInfo4 = utils:set_job_step_status(UpdDocInfo3, "Working"),
       UpdDocInfo5 = save_doc(UpdDocInfo4),

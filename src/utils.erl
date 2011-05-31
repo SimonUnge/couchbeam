@@ -15,7 +15,7 @@
           set_claim/1,
           increment_step/1,
           set_key_on_doc/3,
-          set_executioner/1,
+          set_executioner/2,
           set_job_step_status/2,
           set_job_step_execution_time/2,
           set_step_start_time/1,
@@ -91,9 +91,10 @@ set_claim(DocInfo) ->
   {_,_,DbId,_} = DocInfo#document.db,
   update_job_step_list(DocInfo, "claimed_by", list_to_binary(DbId)).
 
-set_executioner(DocInfo) ->
+set_executioner(DocInfo, WorkerPid) ->
   {_,_,DbId,_} = DocInfo#document.db,
-  update_job_step_list(DocInfo, "executioner", list_to_binary(DbId)).
+  Executioner = "Node: " ++ DbId ++ ", worker: " ++ pid_to_list(WorkerPid),
+  update_job_step_list(DocInfo, "executioner", list_to_binary(Executioner)).
 
 set_job_step_execution_time(DocInfo, Time) ->
   update_job_step_list(DocInfo, "exec_time", Time).
