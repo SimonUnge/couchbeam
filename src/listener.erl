@@ -29,7 +29,7 @@ start(Database) when is_atom(Database)->
 
 %% Process starters?
 start_workmanager() ->
-  %process_flag(trap_exit, true),
+  %process_flag(trap_exit, true), XXX
   WorkManagerPid = spawn_link(workmanager, work_manager, [5]),
   WorkManagerPid.
 

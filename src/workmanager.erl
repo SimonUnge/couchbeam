@@ -227,7 +227,7 @@ handle_me_target(Workers, DocInfo) ->
       give_job_to_worker(Workers, DocInfo);
     false ->
       print("I am target but have no workers, resaves doc with 5 sec keep alive"),
-      %XXX Keeping the doc alive by saving it again, in 5 seconds.
+      %XXX Keeping the doc alive by saving it again, in 5 seconds. Creator will resave
       create_keep_alive(DocInfo),
       Workers
   end.
