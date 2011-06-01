@@ -97,10 +97,29 @@ inspect_step_and_handle(Workers, DocInfo) ->
     true ->
       print("Job step is already running"),
       %XXX Kolla om JAG är den som kör, och om jag verkligen gör det.
-      Workers;
+      handle_step_is_running(Workers, DocInfo);
     false ->
       print("job is not running, inspect winner and handle:"),
       inspect_winner_and_handle(Workers, DocInfo)
+  end.
+
+handle_step_is_running(Workers, DocInfo) ->
+  case is_winner(DocInfo) of %%lite galet, men det stämmer. XXX?
+    true ->
+      %%XXX betyder att jag kör jobbet.
+      handle_is_executioner(Workers, DocInfo);
+    false ->
+      Workers
+  end.
+
+handle_is_executioner(Workers, DocInfo) ->
+  case is_executing(Workers, DocInfo) of
+    true ->
+      Workers;
+    false ->
+      UpdDocInfo = remove_claim_and_winner(DocInfo),
+      save_doc(UpdDocInfo),
+      Workers
   end.
 
 inspect_winner_and_handle(Workers, DocInfo) ->
@@ -275,9 +294,13 @@ release_worker(Workers, DocInfo) ->
 
 remove_claim_and_winner(DocInfo) ->
   print("removing my claim"),
-  UpdatedDocInfo = update_job_step_list(DocInfo, "claimed_by", null),
+  UpdDocInfo1 = update_job_step_list(DocInfo, "claimed_by", null),
   print("...and removing me as winner"),
-  update_job_step_list(UpdatedDocInfo, "winner", null).
+  UpdDocInfo2 = update_job_step_list(UpdDocInfo1, "winner", null),
+  print("and removes eventual executioner"),
+  UpdDocInfo3 = update_job_step_list(UpdDocInfo2, "executioner", null),
+  print("and step status.... now done?"),
+  update_job_step_list(UpdDocInfo3, "step_status", null).
 
 create_keep_alive(DocInfo) ->
   print("I am create keep alive. I will now spawn a process to save the document ~p after 5 sec:", [DocInfo#document.doc_id]),
@@ -336,6 +359,15 @@ have_reserved_worker(Workers, DocInfo) ->
       true
   end.
 
+is_executing(Workers, DocInfo) ->
+  DocId = DocInfo#document.doc_id,
+  case get_busy_worker(Workers, DocInfo) of
+    false ->
+      false;
+    {_WorkerPid, busy, DocId} ->
+      true
+  end.
+
 save_doc(DocInfo) ->
   case couchbeam:save_doc(DocInfo#document.db, DocInfo#document.doc) of
     {ok, NewDoc} ->
@@ -380,6 +412,9 @@ get_free_worker(Workers) ->
   lists:keyfind(free, 2, Workers).
 
 get_reserved_worker(Workers, DocInfo) ->%XXX är jag dum i huvudet? jag plockar ju ut workers, oavsett status.
+  lists:keyfind(DocInfo#document.doc_id, 3, Workers).
+
+get_busy_worker(Workers, DocInfo) ->
   lists:keyfind(DocInfo#document.doc_id, 3, Workers).
 
 get_current_job_step(DocInfo) ->
