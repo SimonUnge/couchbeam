@@ -32,6 +32,7 @@
     current_step, 
     job_length, 
     job_step_do,
+    job_step_alt_do,
     job_step_list,
     retry_strategy
 }).

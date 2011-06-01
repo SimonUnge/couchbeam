@@ -18,15 +18,15 @@ do_work(DocInfo, {MaxR, MaxT, Sleep, SleepF,SleepM}) ->
   P = open_port({spawn, DocInfo#document.job_step_do}, [exit_status]),
   case get_status(P) of
     {exit_status, Status} when Status =:= 0 ->
-      Status;%%All went well.
+      {step_status,{do_status, Status}, {alt_do_status, null}};%%All went well.
     {exit_status, _Status} when MaxR > 0 ->
       print("work failed, retry"),
       NewSleep = sleep_strategy(Sleep, SleepF, SleepM),
-
       do_work(DocInfo, {MaxR - 1, MaxT, NewSleep, SleepF, SleepM});
     {exit_status, Status} ->
-      Status%%alternative do?
-  end. 
+      alternative_do(DocInfo, Status)
+      %%alternative do?
+  end.
 
 get_status(P) ->
   receive
@@ -35,6 +35,16 @@ get_status(P) ->
     {P, Any} ->
       print("This is what I got: ~p", [Any]),
       get_status(P)
+  end.
+
+alternative_do(DocInfo, Status) ->
+  case DocInfo#document.job_step_alt_do of
+    null ->
+      {step_status,{do_status, Status}, {alt_do_status, null}};
+    AltDo ->
+      P = open_port({spawn, binary_to_list(AltDo)}, [exit_status]),
+      {exit_status, AltStatus} = get_status(P),
+      {step_status, {do_status, Status}, {alt_do_status, AltStatus}}
   end.
 
 sleep_strategy(Sleep, SleepFactor, SleepMax) ->

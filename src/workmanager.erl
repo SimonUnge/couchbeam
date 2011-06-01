@@ -17,16 +17,9 @@ start_workers(0, Workers) ->
 work_manager_loop(Workers) ->
   receive
     {status, WorkerPid, DocInfo, {ExecTime, Status}} ->
-      case Status =:= 0 of
-        false ->
-          UpdDocInfo1 = utils:set_step_finish_time(DocInfo),
-          UpdDocInfo2 = utils:set_job_step_execution_time(UpdDocInfo1, ExecTime/1000000),
-          UpdDocInfo3 = utils:set_job_step_status(UpdDocInfo2, "Failed"),
-          NewWorkers = change_worker_status(WorkerPid, Workers, free, null),
-          UpdatedDocInfo = job_step_failed(UpdDocInfo3),
-          save_doc(UpdatedDocInfo),
-          work_manager_loop(NewWorkers)          ;
-        true ->
+      print("The Status ~p", [Status]),
+      case Status of
+        {step_status, {do_status, 0}, {alt_do_status, null}} ->
           print("Status from worker ~p: ~p, on doc: ~p",[WorkerPid, Status, DocInfo#document.doc_id]),
           UpdDocInfo1 = utils:set_step_finish_time(DocInfo),
           UpdDocInfo2 = utils:set_job_step_execution_time(UpdDocInfo1, ExecTime/1000000),
@@ -36,7 +29,26 @@ work_manager_loop(Workers) ->
           UpdatedDocInfo = increment_step(UpdDocInfo3),
           print("Saving complete job step for doc: ~p", [UpdatedDocInfo#document.doc_id]),
           save_doc(UpdatedDocInfo),
-          work_manager_loop(NewWorkers)
+          work_manager_loop(NewWorkers);
+        {step_status, {do_status, DoStatus}, {alt_do_status, null}} ->
+          StepStatusString = "Failed, no alt, do status: " ++ integer_to_list(DoStatus),
+          UpdDocInfo1 = utils:set_step_finish_time(DocInfo),
+          UpdDocInfo2 = utils:set_job_step_execution_time(UpdDocInfo1, ExecTime/1000000),
+          UpdDocInfo3 = utils:set_job_step_status(UpdDocInfo2, StepStatusString),
+          NewWorkers = change_worker_status(WorkerPid, Workers, free, null),
+          UpdatedDocInfo = job_step_failed(UpdDocInfo3),
+          save_doc(UpdatedDocInfo),
+          work_manager_loop(NewWorkers);
+        {step_status, {do_status, DoStatus}, {alt_do_status, AltStatus}} ->
+          print("This is where I go when do failed, alt existed"),
+          StepStatusString = "Failed, did alt with exit status" ++ integer_to_list(AltStatus),
+          UpdDocInfo1 = utils:set_step_finish_time(DocInfo),
+          UpdDocInfo2 = utils:set_job_step_execution_time(UpdDocInfo1, ExecTime/1000000),
+          UpdDocInfo3 = utils:set_job_step_status(UpdDocInfo2, StepStatusString),
+          NewWorkers = change_worker_status(WorkerPid, Workers, free, null),
+          UpdatedDocInfo = job_step_failed(UpdDocInfo3),
+          save_doc(UpdatedDocInfo),
+          work_manager_loop(NewWorkers)      
       end; 
     {changes, Change, Db} ->
       DocId = get_id(Change),
@@ -84,6 +96,7 @@ inspect_step_and_handle(Workers, DocInfo) ->
   case is_step_executing(DocInfo) of
     true ->
       print("Job step is already running"),
+      %XXX Kolla om JAG är den som kör, och om jag verkligen gör det.
       Workers;
     false ->
       print("job is not running, inspect winner and handle:"),
@@ -204,9 +217,11 @@ handle_me_target(Workers, DocInfo) ->
 give_job_to_worker(Workers, DocInfo) ->
   CurrentJobStep = get_current_job_step(DocInfo),
   JobStepDo = get_do(CurrentJobStep),
+  JobStepAltDo = get_alt_do(CurrentJobStep),
   RetryStrategy = get_retry_strategy(CurrentJobStep),
   {WorkerPid, free, _DocId} = get_free_worker(Workers), 
   UpdDocInfo1 = DocInfo#document{job_step_do = JobStepDo,
+                                 job_step_alt_do = JobStepAltDo,
                                  retry_strategy = RetryStrategy},%XXX EGEN FUNKTION, SOM NEEEDAN
   UpdDocInfo2 = utils:set_executioner(UpdDocInfo1, WorkerPid),
   UpdDocInfo3 = utils:set_step_start_time(UpdDocInfo2),%%Move to worker?
@@ -223,8 +238,10 @@ give_job_to_reserved_worker(Workers, DocInfo) ->
     {WorkerPid, booked, Doc_Id} ->
       CurrentJobStep = get_current_job_step(DocInfo),
       JobStepDo = get_do(CurrentJobStep),
+      JobStepAltDo = get_alt_do(CurrentJobStep),
       RetryStrategy = get_retry_strategy(CurrentJobStep),
       UpdDocInfo1 = DocInfo#document{job_step_do = JobStepDo,
+                                     job_step_alt_do = JobStepAltDo,
                                      retry_strategy = RetryStrategy},%%%XXX EGEN FUNKTION
       UpdDocInfo2 = utils:set_executioner(UpdDocInfo1, WorkerPid),
       UpdDocInfo3 = utils:set_step_start_time(UpdDocInfo2),%%Move to worker?
@@ -341,6 +358,11 @@ get_do(CurrentJobStep) ->
   {<<"do">>, DO} = lists:keyfind(<<"do">>, 1, Step),
   binary_to_list(DO).
 
+get_alt_do(CurrentJobStep) ->
+  {Step} = CurrentJobStep,
+  {<<"alt_do">>, AltDo} = lists:keyfind(<<"alt_do">>, 1, Step),
+  AltDo.
+
 get_target(DocInfo) ->
   {CurrentJobStep} = get_current_job_step(DocInfo),
   {<<"target">>, Target} = lists:keyfind(<<"target">>, 1, CurrentJobStep),
@@ -360,7 +382,7 @@ get_free_worker(Workers) ->
 get_reserved_worker(Workers, DocInfo) ->%XXX är jag dum i huvudet? jag plockar ju ut workers, oavsett status.
   lists:keyfind(DocInfo#document.doc_id, 3, Workers).
 
-get_current_job_step(DocInfo) -> %XXX Change order of args?
+get_current_job_step(DocInfo) ->
   lists:nth(DocInfo#document.current_step + 1, DocInfo#document.job_step_list). %Erlang list index starts on 1.
 
 get_claim_status(DocInfo) ->
