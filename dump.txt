@@ -1,0 +1,21 @@
+
+========================================================================================
+ nonode@nohost                                                             10:24:07
+ Load:  cpu         0               Memory:  total       11271    binary        742
+        procs      65                        processes    3102    code         4695
+        runq        0                        atom          533    ets           478
+
+Pid            Name or Initial Func    Time    Reds  Memory    MsgQ Current Function
+----------------------------------------------------------------------------------------
+<0.107.0>      etop_gui:init/1          '-'    4164   26464       0 etop:update/1       
+<0.109.0>      gstk:init/1              '-'    3929   67912       0 gstk:loop/1         
+<0.110.0>      gstk_port_handler:in     '-'     618   34320       0 gstk_port_handler:id
+<0.108.0>      gs_frontend              '-'     325   24560       0 gs_frontend:loop/1  
+<0.0.0>        init                     '-'       0   26464       0 init:loop/1         
+<0.3.0>        erl_prim_loader          '-'       0  109112       0 erl_prim_loader:loop
+<0.5.0>        error_logger             '-'       0  513608       0 gen_event:fetch_msg/
+<0.6.0>        application_controll     '-'       0  263840       0 gen_server:loop/6   
+<0.8.0>        proc_lib:init_p/5        '-'       0    7008       0 application_master:m
+<0.9.0>        application_master:s     '-'       0    2736       0 application_master:l
+========================================================================================
+
