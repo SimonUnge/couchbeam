@@ -13,8 +13,8 @@ start(Host, Port, Name) ->
   {ok, Db} = couchbeam:open_or_create_db(Server, Name),
   {ok, ReqId} = couchbeam:changes_wait(Db, self(), [{heartbeat, "1000"}]),
   print("StartRef ~p", [ReqId]),
-  WorkManagerPid = start_workmanager(), %I do not use workmanagerpid, do I?
-get_changes(ReqId, Db, WorkManagerPid).
+  WorkManagerPid = start_workmanager(Db), %I do not use workmanagerpid, do I?
+  get_changes(ReqId, Db, WorkManagerPid).
 
 %%Just for testing purposes.
 start(Database) when is_atom(Database)->
@@ -28,9 +28,9 @@ start(Database) when is_atom(Database)->
   end.
 
 %% Process starters?
-start_workmanager() ->
+start_workmanager(Db) ->
   %process_flag(trap_exit, true), XXX
-  WorkManagerPid = spawn_link(workmanager, work_manager, [5]),
+  WorkManagerPid = spawn_link(workmanager, work_manager, [5, Db]),
   WorkManagerPid.
 
 %%Starts a continuous changes stream, and sends the change notification to a work manager.
@@ -38,7 +38,7 @@ get_changes(ReqId, Db, WorkManagerPid) ->
   receive
     {'EXIT', WorkManagerPid, Reson} ->
       print("~p died, and here is why: ~p",[WorkManagerPid, Reson]),
-      NewPid = start_workmanager(),
+      NewPid = start_workmanager(Db),
       get_changes(ReqId, Db, NewPid);
     {ReqId, done} ->
       print("listener done?"),

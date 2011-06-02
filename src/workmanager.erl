@@ -1,9 +1,10 @@
 -module (workmanager).
--export ([work_manager/1, setnth/3, save_doc/1]).
+-export ([work_manager/2, setnth/3, save_doc/1]).
 -include("couchbeam.hrl").
 
-work_manager(N) ->
+work_manager(N, Db) ->
   Workers = start_workers(N, []),
+  KeepDocsAliveWorkerPid = start_keep_docs_alive(Db), 
   print("Length workers ~p", [length(Workers)]),
   work_manager_loop(Workers).
 
@@ -13,6 +14,10 @@ start_workers(N, Workers) when N>0 ->
   start_workers(N - 1, [{WorkerPid, free, null} | Workers]);
 start_workers(0, Workers) ->
   Workers.
+
+start_keep_docs_alive(Db) ->
+  process_flag(trap_exit, true),
+  spawn_link(keepdocsalive, start, [Db]).
 
 work_manager_loop(Workers) ->
   receive
@@ -53,21 +58,31 @@ work_manager_loop(Workers) ->
     {changes, Change, Db} ->
       DocId = get_id(Change),
       print("WM got change for doc_id: ~p,~n Will try to open.",[DocId]),
-      case couchbeam:open_doc(Db, DocId) of
-        {ok, Doc} ->
-          print("Doc was opened!"),
-          CurrentStepNumber = get_field("step", Doc),
-          print("The current step: ~p", [CurrentStepNumber]),
-          %Här borde jag nästan läsa in allt.XXX och göra en funktion av det.
-          DocInfo = init_docinfo(Db, Doc, DocId),
-          print("Worker status list before handle job: ~p", [Workers]),
-          UpdatedWorkers = handle_job(Workers, DocInfo),
-          print("And the worker status list after handle job, before loop:~p", [UpdatedWorkers]),
-          work_manager_loop(UpdatedWorkers);
-        {error, not_found} ->
-          print("Doc deleted?..."),
+      case is_design_document(DocId) of
+        false ->
+          UpdWorkers = handle_document(Db, DocId, Workers),
+          work_manager_loop(UpdWorkers);
+        true ->
+          print("a change in designdoc. Ignoring"),
           work_manager_loop(Workers)
       end
+  end.
+
+handle_document(Db, DocId, Workers) ->
+  case couchbeam:open_doc(Db, DocId) of
+    {ok, Doc} ->
+      print("Doc was opened!"),
+      CurrentStepNumber = get_field("step", Doc),
+      print("The current step: ~p", [CurrentStepNumber]),
+      %Här borde jag nästan läsa in allt.XXX och göra en funktion av det.
+      DocInfo = init_docinfo(Db, Doc, DocId),
+      print("Worker status list before handle job: ~p", [Workers]),
+      UpdatedWorkers = handle_job(Workers, DocInfo),
+      print("And the worker status list after handle job, before loop:~p", [UpdatedWorkers]),
+      UpdatedWorkers;
+    {error, not_found} ->
+      print("Doc deleted?..."),
+      Workers
   end.
 
 init_docinfo(Db, Doc, DocId) ->
@@ -205,8 +220,7 @@ handle_any_target(Workers, DocInfo) ->
       UpdatedWorkers;
     false ->
       %XXX Keeping the doc alive by saving it again. But should I increment some value, and then why?
-      print("No free workers, resaves doc with 5 sec keep alive..."),
-      create_keep_alive(DocInfo),
+      print("No free workers, doing nothing..."),
       Workers
   end.
 
@@ -226,9 +240,8 @@ handle_me_target(Workers, DocInfo) ->
       print("I am target (so gives work to worker) and has workers, see: ~p", [Workers]),
       give_job_to_worker(Workers, DocInfo);
     false ->
-      print("I am target but have no workers, resaves doc with 5 sec keep alive"),
+      print("I am target but have no workers, doing nothing"),
       %XXX Keeping the doc alive by saving it again, in 5 seconds. Creator will resave
-      create_keep_alive(DocInfo),
       Workers
   end.
 %%==== Worker Helpers =====
@@ -307,6 +320,9 @@ create_keep_alive(DocInfo) ->
   Pid = spawn(keepdocalive, keep_doc_alive, [DocInfo]),
   print("Spawned, with Pid: ~p", [Pid]).
 %%=========================  
+
+is_design_document(DocId) ->
+  lists:prefix("_design", DocId).
 
 is_job_complete(DocInfo) ->
   DocInfo#document.job_length < DocInfo#document.current_step + 1.
