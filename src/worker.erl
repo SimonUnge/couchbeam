@@ -79,3 +79,4 @@ print(String) ->
   print(String,[]).
 print(String, Argument_List) ->
   io:format(String ++ "~n", Argument_List).
+  

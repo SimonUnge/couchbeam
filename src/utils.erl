@@ -4,13 +4,17 @@
 -export ([save_doc/1,
           get_id/1,
           get_do/1,
+          get_alt_do/1,
           get_target/1,
+          get_retry_strategy/1,
           get_field/2,
           get_free_worker/1,
           get_reserved_worker/2,
+          get_busy_worker/2,
           get_current_job_step/1,
           get_claim_status/1,
           get_winner_status/1,
+          get_step_status/1,
           %setters
           set_claim/1,
           increment_step/1,
@@ -20,7 +24,11 @@
           set_job_step_execution_time/2,
           set_step_start_time/1,
           set_step_finish_time/1,
+          change_worker_status/4,
           set_step_winner/1,
+          set_step_to_max/1,
+          set_job_failed/1,
+          job_step_failed/1,
           update_job_step_list/3,
           setnth/3
           ]).
@@ -30,18 +38,11 @@ save_doc(DocInfo) ->
   case couchbeam:save_doc(DocInfo#document.db, DocInfo#document.doc) of
     {ok, NewDoc} ->
       print("Saving doc id:~p",[DocInfo#document.doc_id]),
-      NewDoc;
+      DocInfo#document{ doc = NewDoc };
     {error, conflict} ->
-      print("Save conflict!!!!!!!!!!"),
-      save_conflict
+      print("Save conflict on doc:~p",[DocInfo#document.doc_id]),
+      DocInfo
   end.
-
-%%==== just to have a nicer fuckning print. Hates io:format ====
-print(String) ->
-  print(String,[]).
-print(String, Argument_List) ->
-  io:format(String ++ "~n", Argument_List).
-
 
 %%==== Document Getters and setters =====
 
@@ -52,16 +53,25 @@ get_id(Change) ->
   {<<"id">>, ID} = lists:keyfind(<<"id">>, 1, Doc),
   binary_to_list(ID).
 
-%? Merge with get_id?
 get_do(CurrentJobStep) ->
   {Step} = CurrentJobStep,
   {<<"do">>, DO} = lists:keyfind(<<"do">>, 1, Step),
   binary_to_list(DO).
 
+get_alt_do(CurrentJobStep) ->
+  {Step} = CurrentJobStep,
+  {<<"alt_do">>, AltDo} = lists:keyfind(<<"alt_do">>, 1, Step),
+  AltDo.
+
 get_target(DocInfo) ->
   {CurrentJobStep} = get_current_job_step(DocInfo),
   {<<"target">>, Target} = lists:keyfind(<<"target">>, 1, CurrentJobStep),
   binary_to_list(Target).
+
+get_retry_strategy(CurrentJobStep) ->
+  {Step} = CurrentJobStep,
+  {<<"retry_strategy">>, {RetryStrategy}} = lists:keyfind(<<"retry_strategy">>, 1, Step),
+  RetryStrategy.
 
 get_field(Field, Doc) ->
   couchbeam_doc:get_value(list_to_binary(Field), Doc).
@@ -69,7 +79,11 @@ get_field(Field, Doc) ->
 get_free_worker(Workers) ->
   lists:keyfind(free, 2, Workers).
 
-get_reserved_worker(Workers, DocInfo) ->%XXX är jag dum i huvudet? jag plockar ju ut workers, oavsett status.
+%%Get unfree worker. They both do the same. Logic should be fixed.XXX
+get_reserved_worker(Workers, DocInfo) ->
+  lists:keyfind(DocInfo#document.doc_id, 3, Workers).
+
+get_busy_worker(Workers, DocInfo) ->
   lists:keyfind(DocInfo#document.doc_id, 3, Workers).
 
 get_current_job_step(DocInfo) -> %XXX Change order of args?
@@ -84,6 +98,11 @@ get_winner_status(DocInfo) ->
   {CurrentJobStep} = get_current_job_step(DocInfo),
   {<<"winner">>, WinnerStatus} = lists:keyfind(<<"winner">>, 1, CurrentJobStep),
   WinnerStatus.
+
+get_step_status(DocInfo) ->
+  {CurrentJobStep} = get_current_job_step(DocInfo),
+  {<<"step_status">>, StepStatus} = lists:keyfind(<<"step_status">>, 1, CurrentJobStep),
+  StepStatus.
 
 %%Setters
 
@@ -123,6 +142,22 @@ increment_step(DocInfo) ->
                                         DocInfo#document.current_step + 1)
                   }.
 
+change_worker_status(WorkerPid, Workers, NewStatus, DocId) ->
+  lists:keyreplace(WorkerPid, 1, Workers, {WorkerPid, NewStatus, DocId}).
+
+set_step_to_max(DocInfo) ->
+  DocInfo#document{doc = set_key_on_doc(DocInfo, "step", DocInfo#document.job_length)}.
+
+set_job_failed(DocInfo) ->
+  DocInfo#document{doc = set_key_on_doc(DocInfo,
+                                        "job_status", 
+                                        list_to_binary("failed"))
+                          }.
+
+job_step_failed(DocInfo) ->
+  UpdDocInfo = set_step_to_max(DocInfo),
+  set_job_failed(UpdDocInfo).
+
 set_key_on_doc(DocInfo, Key, Value) ->
   couchbeam_doc:set_value(list_to_binary(Key),
                            Value,
@@ -149,3 +184,11 @@ update_job_step_list(DocInfo, Key, Value) ->
 %% @doc Replaces element on index Index with Element
 setnth(1, [_|Rest], New) -> [New|Rest];
 setnth(I, [E|Rest], New) -> [E|setnth(I-1, Rest, New)].
+
+
+%%==== just to have a nicer fuckning print. Hates io:format ====
+print(String) ->
+  print(String,[]).
+print(String, Argument_List) ->
+  io:format(String ++ "~n", Argument_List).
+

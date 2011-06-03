@@ -29,3 +29,4 @@ re_save_docs([{H} | T], Db) ->
   couchbeam:save_doc(Db, Doc),
   io:format("Okej, now I will resave the document ~p ~n", [DocId]),
   re_save_docs(T, Db).
+  

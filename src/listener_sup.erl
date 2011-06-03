@@ -32,7 +32,7 @@ receive_loop(WorkManagerPid, ListenerPid, Db) ->
       NewWorkManagerPid = start_workmanager(Db),
       ListenerPid ! {workmanagerpid, NewWorkManagerPid},
       receive_loop(NewWorkManagerPid, ListenerPid, Db);
-    {'Exit', ListenerPid, Reason} ->
+    {'EXIT', ListenerPid, Reason} ->
       io:format("Listener ~p died, reason ~p. Restarts.~n", [ListenerPid, Reason]),
       NewListenerPid = start_listener(Db, WorkManagerPid),
       receive_loop(WorkManagerPid, NewListenerPid, Db)

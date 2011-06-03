@@ -1,12 +1,12 @@
 -module (workmanager).
--export ([work_manager/2, setnth/3, save_doc/1]).
+-export ([work_manager/2]).
 -include("couchbeam.hrl").
 
 work_manager(N, Db) ->
   Workers = start_workers(N, []),
   KeepDocsAliveWorkerPid = start_keep_docs_alive(Db), 
   print("Length workers ~p", [length(Workers)]),
-  work_manager_loop(Workers).
+  work_manager_loop(Workers, KeepDocsAliveWorkerPid, Db).
 
 start_workers(N, Workers) when N>0 ->
   process_flag(trap_exit, true),
@@ -19,7 +19,7 @@ start_keep_docs_alive(Db) ->
   process_flag(trap_exit, true),
   spawn_link(keepdocsalive, start, [Db]).
 
-work_manager_loop(Workers) ->
+work_manager_loop(Workers, KeepDocsAliveWorkerPid, Db) ->
   receive
     {status, WorkerPid, DocInfo, {ExecTime, Status}} ->
       print("The Status ~p", [Status]),
@@ -29,42 +29,46 @@ work_manager_loop(Workers) ->
           UpdDocInfo1 = utils:set_step_finish_time(DocInfo),
           UpdDocInfo2 = utils:set_job_step_execution_time(UpdDocInfo1, ExecTime/1000000),
           UpdDocInfo3 = utils:set_job_step_status(UpdDocInfo2, "Finished"),
-          NewWorkers = change_worker_status(WorkerPid, Workers, free, null),
+          NewWorkers = utils:change_worker_status(WorkerPid, Workers, free, null),
           print("freed worker ~p, worker list is now: ~p",[WorkerPid, NewWorkers]),
-          UpdatedDocInfo = increment_step(UpdDocInfo3),
+          UpdatedDocInfo = utils:increment_step(UpdDocInfo3),
           print("Saving complete job step for doc: ~p", [UpdatedDocInfo#document.doc_id]),
-          save_doc(UpdatedDocInfo),
-          work_manager_loop(NewWorkers);
+          utils:save_doc(UpdatedDocInfo),
+          work_manager_loop(NewWorkers, KeepDocsAliveWorkerPid, Db);
         {step_status, {do_status, DoStatus}, {alt_do_status, null}} ->
           StepStatusString = "Failed, no alt, do status: " ++ integer_to_list(DoStatus),
           UpdDocInfo1 = utils:set_step_finish_time(DocInfo),
           UpdDocInfo2 = utils:set_job_step_execution_time(UpdDocInfo1, ExecTime/1000000),
           UpdDocInfo3 = utils:set_job_step_status(UpdDocInfo2, StepStatusString),
-          NewWorkers = change_worker_status(WorkerPid, Workers, free, null),
-          UpdatedDocInfo = job_step_failed(UpdDocInfo3),
-          save_doc(UpdatedDocInfo),
-          work_manager_loop(NewWorkers);
+          NewWorkers = utils:change_worker_status(WorkerPid, Workers, free, null),
+          UpdatedDocInfo = utils:job_step_failed(UpdDocInfo3),
+          utils:save_doc(UpdatedDocInfo),
+          work_manager_loop(NewWorkers, KeepDocsAliveWorkerPid, Db);
         {step_status, {do_status, DoStatus}, {alt_do_status, AltStatus}} ->
           print("This is where I go when do failed, alt existed"),
           StepStatusString = "Failed, did alt with exit status" ++ integer_to_list(AltStatus),
           UpdDocInfo1 = utils:set_step_finish_time(DocInfo),
           UpdDocInfo2 = utils:set_job_step_execution_time(UpdDocInfo1, ExecTime/1000000),
           UpdDocInfo3 = utils:set_job_step_status(UpdDocInfo2, StepStatusString),
-          NewWorkers = change_worker_status(WorkerPid, Workers, free, null),
-          UpdatedDocInfo = job_step_failed(UpdDocInfo3),
-          save_doc(UpdatedDocInfo),
-          work_manager_loop(NewWorkers)      
-      end; 
+          NewWorkers = utils:change_worker_status(WorkerPid, Workers, free, null),
+          UpdatedDocInfo = utils:job_step_failed(UpdDocInfo3),
+          utils:save_doc(UpdatedDocInfo),
+          work_manager_loop(NewWorkers, KeepDocsAliveWorkerPid, Db)      
+      end;
+    {'EXIT', KeepDocsAliveWorkerPid, Reason} ->
+      print("Keep docs alive proc died, Reason: ~p", [Reason]),
+      NewKeepDocsAliveWorkerPid = start_keep_docs_alive(Db),
+      work_manager_loop(Workers, NewKeepDocsAliveWorkerPid, Db);
     {changes, Change, Db} ->
-      DocId = get_id(Change),
+      DocId = utils:get_id(Change),
       print("WM got change for doc_id: ~p,~n Will try to open.",[DocId]),
       case is_design_document(DocId) of
         false ->
           UpdWorkers = handle_document(Db, DocId, Workers),
-          work_manager_loop(UpdWorkers);
+          work_manager_loop(UpdWorkers, KeepDocsAliveWorkerPid, Db);
         true ->
           print("a change in designdoc. Ignoring"),
-          work_manager_loop(Workers)
+          work_manager_loop(Workers, KeepDocsAliveWorkerPid, Db)
       end
   end.
 
@@ -72,7 +76,7 @@ handle_document(Db, DocId, Workers) ->
   case couchbeam:open_doc(Db, DocId) of
     {ok, Doc} ->
       print("Doc was opened!"),
-      CurrentStepNumber = get_field("step", Doc),
+      CurrentStepNumber = utils:get_field("step", Doc),
       print("The current step: ~p", [CurrentStepNumber]),
       %Här borde jag nästan läsa in allt.XXX och göra en funktion av det.
       DocInfo = init_docinfo(Db, Doc, DocId),
@@ -86,12 +90,12 @@ handle_document(Db, DocId, Workers) ->
   end.
 
 init_docinfo(Db, Doc, DocId) ->
-  JobStepList = get_field("job", Doc),
+  JobStepList = utils:get_field("job", Doc),
   #document{
     db = Db,
     doc = Doc,
     doc_id = DocId,
-    current_step = get_field("step", Doc),
+    current_step = utils:get_field("step", Doc),
     job_step_list = JobStepList,
     job_length = length(JobStepList)
   }.
@@ -133,7 +137,7 @@ handle_is_executioner(Workers, DocInfo) ->
       Workers;
     false ->
       UpdDocInfo = remove_claim_and_winner(DocInfo),
-      save_doc(UpdDocInfo),
+      utils:save_doc(UpdDocInfo),
       Workers
   end.
 
@@ -173,7 +177,7 @@ handle_is_winner(Workers, DocInfo) ->
     false ->
       print("I am winner, but have no worker reserved. Removes claim and winner, resaves doc."),
       UpdatedDocInfo = remove_claim_and_winner(DocInfo),
-      save_doc(UpdatedDocInfo),
+      utils:save_doc(UpdatedDocInfo),
       Workers
   end.
 
@@ -192,7 +196,7 @@ handle_is_claimed(Workers, DocInfo) ->
     true ->
       print("I am the creator, setting winner, saves doc, returns workers"),
       UpdDocInfo = utils:set_step_winner(DocInfo),
-      save_doc(UpdDocInfo),
+      utils:save_doc(UpdDocInfo),
       Workers;
     false ->
       print("I am not the creator, returns workers."),
@@ -213,10 +217,10 @@ handle_any_target(Workers, DocInfo) ->
   case has_free_workers(Workers) of
     true ->
       print("there are free workers, setting claim"),
-      UpdatedDocInfo = set_claim(DocInfo),
+      UpdatedDocInfo = utils:set_claim(DocInfo),
       UpdatedWorkers = book_worker(Workers, UpdatedDocInfo),
       print("And I have now booked a worker for job:~p ~n Workerlist:~p ",[UpdatedDocInfo#document.doc_id, UpdatedWorkers]),
-      save_doc(UpdatedDocInfo),
+      utils:save_doc(UpdatedDocInfo),
       UpdatedWorkers;
     false ->
       %XXX Keeping the doc alive by saving it again. But should I increment some value, and then why?
@@ -238,7 +242,8 @@ handle_me_target(Workers, DocInfo) ->
   case has_free_workers(Workers) of
     true ->
       print("I am target (so gives work to worker) and has workers, see: ~p", [Workers]),
-      give_job_to_worker(Workers, DocInfo);
+      UpdDocInfo = utils:set_claim(DocInfo),
+      give_job_to_worker(Workers, UpdDocInfo);
     false ->
       print("I am target but have no workers, doing nothing"),
       %XXX Keeping the doc alive by saving it again, in 5 seconds. Creator will resave
@@ -247,59 +252,47 @@ handle_me_target(Workers, DocInfo) ->
 %%==== Worker Helpers =====
 %%XXX ej testad?
 give_job_to_worker(Workers, DocInfo) ->
-  CurrentJobStep = get_current_job_step(DocInfo),
-  JobStepDo = get_do(CurrentJobStep),
-  JobStepAltDo = get_alt_do(CurrentJobStep),
-  RetryStrategy = get_retry_strategy(CurrentJobStep),
-  {WorkerPid, free, _DocId} = get_free_worker(Workers), 
-  UpdDocInfo1 = DocInfo#document{job_step_do = JobStepDo,
-                                 job_step_alt_do = JobStepAltDo,
-                                 retry_strategy = RetryStrategy},%XXX EGEN FUNKTION, SOM NEEEDAN
-  UpdDocInfo2 = utils:set_executioner(UpdDocInfo1, WorkerPid),
-  UpdDocInfo3 = utils:set_step_start_time(UpdDocInfo2),%%Move to worker?
-  UpdDocInfo4 = utils:set_job_step_status(UpdDocInfo3, "Working"),
-  print("The worker pid: ~p",[WorkerPid]),
-  UpdDocInfo5 = save_doc(UpdDocInfo4),
-  WorkerPid ! {work, self(), UpdDocInfo5},
-  change_worker_status(WorkerPid, Workers, busy, UpdDocInfo5#document.doc_id).
+  {WorkerPid, free, _DocId} = utils:get_free_worker(Workers), 
+  UpdDocInfo = init_docinfo_for_worker(DocInfo, WorkerPid),
+  WorkerPid ! {work, self(), UpdDocInfo},
+  utils:change_worker_status(WorkerPid, Workers, busy, UpdDocInfo#document.doc_id).
 
 give_job_to_reserved_worker(Workers, DocInfo) ->
   Doc_Id = DocInfo#document.doc_id,
-  print("WHY DO I ALWAYS CRASH HERE? With DOCID = ~p", [Doc_Id]),
-  case get_reserved_worker(Workers, DocInfo) of
+  case utils:get_reserved_worker(Workers, DocInfo) of
     {WorkerPid, booked, Doc_Id} ->
-      CurrentJobStep = get_current_job_step(DocInfo),
-      JobStepDo = get_do(CurrentJobStep),
-      JobStepAltDo = get_alt_do(CurrentJobStep),
-      RetryStrategy = get_retry_strategy(CurrentJobStep),
-      UpdDocInfo1 = DocInfo#document{job_step_do = JobStepDo,
-                                     job_step_alt_do = JobStepAltDo,
-                                     retry_strategy = RetryStrategy},%%%XXX EGEN FUNKTION
-      UpdDocInfo2 = utils:set_executioner(UpdDocInfo1, WorkerPid),
-      UpdDocInfo3 = utils:set_step_start_time(UpdDocInfo2),%%Move to worker?
-      UpdDocInfo4 = utils:set_job_step_status(UpdDocInfo3, "Working"),
-      UpdDocInfo5 = save_doc(UpdDocInfo4),
-      WorkerPid ! {work, self(), UpdDocInfo5},
-      change_worker_status(WorkerPid, Workers, busy, UpdDocInfo5#document.doc_id);
+      UpdDocInfo = init_docinfo_for_worker(DocInfo, WorkerPid),
+      WorkerPid ! {work, self(), UpdDocInfo},
+      utils:change_worker_status(WorkerPid, Workers, busy, UpdDocInfo#document.doc_id);
     {_WorkerPid, _Status, Doc_Id} ->
       print("for some reason, Im already doing this job..."),
       Workers
   end.
-  
-change_worker_status(WorkerPid, Workers, NewStatus, DocId) ->
-  lists:keyreplace(WorkerPid, 1, Workers, {WorkerPid, NewStatus, DocId}).
+
+init_docinfo_for_worker(DocInfo, WorkerPid) ->
+  CurrentJobStep = utils:get_current_job_step(DocInfo),
+  JobStepDo      = utils:get_do(CurrentJobStep),
+  JobStepAltDo   = utils:get_alt_do(CurrentJobStep),
+  RetryStrategy  = utils:get_retry_strategy(CurrentJobStep),
+  UpdDocInfo1    = DocInfo#document{job_step_do  = JobStepDo,
+                                 job_step_alt_do = JobStepAltDo,
+                                 retry_strategy  = RetryStrategy},
+  UpdDocInfo2 = utils:set_executioner(UpdDocInfo1, WorkerPid),
+  UpdDocInfo3 = utils:set_step_start_time(UpdDocInfo2),
+  UpdDocInfo4 = utils:set_job_step_status(UpdDocInfo3, "Working"),
+  utils:save_doc(UpdDocInfo4).
 
 book_worker(Workers, DocInfo) ->
-  {WorkerPid, free, _DocId} = get_free_worker(Workers),
+  {WorkerPid, free, _DocId} = utils:get_free_worker(Workers),
   print("booking worker ~p", [WorkerPid]),
-  change_worker_status(WorkerPid, Workers, booked, DocInfo#document.doc_id).
+  utils:change_worker_status(WorkerPid, Workers, booked, DocInfo#document.doc_id).
 
 release_worker(Workers, DocInfo) ->
   Doc_Id = DocInfo#document.doc_id,
-  case get_reserved_worker(Workers, DocInfo) of
+  case utils:get_reserved_worker(Workers, DocInfo) of
     {WorkerPid, booked, Doc_Id} ->
       print("Release worker: ~p", [WorkerPid]),
-      change_worker_status(WorkerPid, Workers, free, null);
+      utils:change_worker_status(WorkerPid, Workers, free, null);
     false ->
       print("Ah, I did not book this job"),
       Workers
@@ -307,18 +300,14 @@ release_worker(Workers, DocInfo) ->
 
 remove_claim_and_winner(DocInfo) ->
   print("removing my claim"),
-  UpdDocInfo1 = update_job_step_list(DocInfo, "claimed_by", null),
+  UpdDocInfo1 = utils:update_job_step_list(DocInfo, "claimed_by", null),
   print("...and removing me as winner"),
-  UpdDocInfo2 = update_job_step_list(UpdDocInfo1, "winner", null),
+  UpdDocInfo2 = utils:update_job_step_list(UpdDocInfo1, "winner", null),
   print("and removes eventual executioner"),
-  UpdDocInfo3 = update_job_step_list(UpdDocInfo2, "executioner", null),
+  UpdDocInfo3 = utils:update_job_step_list(UpdDocInfo2, "executioner", null),
   print("and step status.... now done?"),
-  update_job_step_list(UpdDocInfo3, "step_status", null).
+  utils:update_job_step_list(UpdDocInfo3, "step_status", null).
 
-create_keep_alive(DocInfo) ->
-  print("I am create keep alive. I will now spawn a process to save the document ~p after 5 sec:", [DocInfo#document.doc_id]),
-  Pid = spawn(keepdocalive, keep_doc_alive, [DocInfo]),
-  print("Spawned, with Pid: ~p", [Pid]).
 %%=========================  
 
 is_design_document(DocId) ->
@@ -329,38 +318,38 @@ is_job_complete(DocInfo) ->
 
 %Returns true if the job-step is claimed.
 is_claimed(DocInfo) ->
-  ClaimStatus = get_claim_status(DocInfo),
+  ClaimStatus = utils:get_claim_status(DocInfo),
   null =/= ClaimStatus.
 
 is_step_executing(DocInfo) ->
-  StepStatus = get_step_status(DocInfo),
+  StepStatus = utils:get_step_status(DocInfo),
   null =/= StepStatus.
 
 has_winner(DocInfo) ->
-  WinnerStatus = get_winner_status(DocInfo),
+  WinnerStatus = utils:get_winner_status(DocInfo),
   WinnerStatus =/= null.
 
 is_winner(DocInfo) ->
-  WinnerStatus = get_winner_status(DocInfo),
+  WinnerStatus = utils:get_winner_status(DocInfo),
   {_,_,DbId,_} = DocInfo#document.db,
   WinnerStatus =:= list_to_binary(DbId).
 
 is_target_any(DocInfo) ->
-  Target = get_target(DocInfo),
+  Target = utils:get_target(DocInfo),
   Target =:= "any".
 
 is_target_me(DocInfo) ->
-  Target = get_target(DocInfo),
+  Target = utils:get_target(DocInfo),
   {_,_,DbId,_} = DocInfo#document.db,
   Target =:= DbId.
 
 is_job_creator(DocInfo) ->
-  Creator = get_field("creator", DocInfo#document.doc),
+  Creator = utils:get_field("creator", DocInfo#document.doc),
   {_,_,DbId,_} = DocInfo#document.db,
   Creator =:= list_to_binary(DbId).
 
 has_free_workers(Workers) ->
-  case get_free_worker(Workers) of
+  case utils:get_free_worker(Workers) of
     false ->
       false;
     _Worker ->
@@ -368,7 +357,7 @@ has_free_workers(Workers) ->
   end.
 
 have_reserved_worker(Workers, DocInfo) ->
-  case get_reserved_worker(Workers, DocInfo) of
+  case utils:get_reserved_worker(Workers, DocInfo) of
     false ->
       false;
     _Worker ->
@@ -377,130 +366,12 @@ have_reserved_worker(Workers, DocInfo) ->
 
 is_executing(Workers, DocInfo) ->
   DocId = DocInfo#document.doc_id,
-  case get_busy_worker(Workers, DocInfo) of
+  case utils:get_busy_worker(Workers, DocInfo) of
     false ->
       false;
     {_WorkerPid, busy, DocId} ->
       true
   end.
-
-save_doc(DocInfo) ->
-  case couchbeam:save_doc(DocInfo#document.db, DocInfo#document.doc) of
-    {ok, NewDoc} ->
-      print("Saving doc id:~p",[DocInfo#document.doc_id]),
-      DocInfo#document{ doc = NewDoc };
-    {error, conflict} ->
-      print("Save conflict on doc:~p",[DocInfo#document.doc_id]),
-      DocInfo
-  end.
-%%===== Getters =====
-
-get_id(Change) ->
-  {Doc} = Change,
-  {<<"id">>, ID} = lists:keyfind(<<"id">>, 1, Doc),
-  binary_to_list(ID).
-
-%? Merge with get_id? XXX SE ÖVER DETTA, LIKNANDE TAR OLIKA ARGUMENT!!!
-get_do(CurrentJobStep) ->
-  {Step} = CurrentJobStep,
-  {<<"do">>, DO} = lists:keyfind(<<"do">>, 1, Step),
-  binary_to_list(DO).
-
-get_alt_do(CurrentJobStep) ->
-  {Step} = CurrentJobStep,
-  {<<"alt_do">>, AltDo} = lists:keyfind(<<"alt_do">>, 1, Step),
-  AltDo.
-
-get_target(DocInfo) ->
-  {CurrentJobStep} = get_current_job_step(DocInfo),
-  {<<"target">>, Target} = lists:keyfind(<<"target">>, 1, CurrentJobStep),
-  binary_to_list(Target).
-
-get_retry_strategy(CurrentJobStep) ->
-  {Step} = CurrentJobStep,
-  {<<"retry_strategy">>, {RetryStrategy}} = lists:keyfind(<<"retry_strategy">>, 1, Step),
-  RetryStrategy.
-
-get_field(Field, Doc) ->
-  couchbeam_doc:get_value(list_to_binary(Field), Doc).
-
-get_free_worker(Workers) ->
-  lists:keyfind(free, 2, Workers).
-
-get_reserved_worker(Workers, DocInfo) ->%XXX är jag dum i huvudet? jag plockar ju ut workers, oavsett status.
-  lists:keyfind(DocInfo#document.doc_id, 3, Workers).
-
-get_busy_worker(Workers, DocInfo) ->
-  lists:keyfind(DocInfo#document.doc_id, 3, Workers).
-
-get_current_job_step(DocInfo) ->
-  lists:nth(DocInfo#document.current_step + 1, DocInfo#document.job_step_list). %Erlang list index starts on 1.
-
-get_claim_status(DocInfo) ->
-  {CurrentJobStep} = get_current_job_step(DocInfo),
-  {<<"claimed_by">>, ClaimStatus} = lists:keyfind(<<"claimed_by">>, 1, CurrentJobStep),
-  ClaimStatus.
-
-get_winner_status(DocInfo) ->
-  {CurrentJobStep} = get_current_job_step(DocInfo),
-  {<<"winner">>, WinnerStatus} = lists:keyfind(<<"winner">>, 1, CurrentJobStep),
-  WinnerStatus.
-
-get_step_status(DocInfo) ->
-  {CurrentJobStep} = get_current_job_step(DocInfo),
-  {<<"step_status">>, StepStatus} = lists:keyfind(<<"step_status">>, 1, CurrentJobStep),
-  StepStatus.
-
-%%==== SETTERS ====
-set_claim(DocInfo) ->
-  {_,_,DbId,_} = DocInfo#document.db,
-  update_job_step_list(DocInfo, "claimed_by", list_to_binary(DbId)).
-
-increment_step(DocInfo) ->
-  DocInfo#document{doc = set_key_on_doc(DocInfo,
-                                        "step",
-                                        DocInfo#document.current_step + 1)
-                  }.
-
-set_step_to_max(DocInfo) ->
-  DocInfo#document{doc = set_key_on_doc(DocInfo, "step", DocInfo#document.job_length)}.
-
-set_job_failed(DocInfo) ->
-  DocInfo#document{doc = set_key_on_doc(DocInfo,
-                                        "job_status", 
-                                        list_to_binary("failed"))
-                          }.
-
-set_key_on_doc(DocInfo, Key, Value) ->
-  couchbeam_doc:set_value(list_to_binary(Key),
-                           Value,
-                           DocInfo#document.doc).
-
-%%==== To get job list, change value of key, and return an updated job list, or DocInfo?
-update_job_step_list(DocInfo, Key, Value) ->
-  {CurrJobStep} = get_current_job_step(DocInfo),
-  UpdatedCurrJobStep = lists:keyreplace(list_to_binary(Key),
-                                        1,
-                                        CurrJobStep,
-                                        {list_to_binary(Key),
-                                        Value}
-                                       ),
-  Updated_Job_List = setnth(DocInfo#document.current_step + 1, %THis I hate, + 1, XXX
-                            DocInfo#document.job_step_list, 
-                            {UpdatedCurrJobStep}
-                           ),
-  DocInfo#document{job_step_list = Updated_Job_List,
-                   doc = set_key_on_doc(DocInfo, "job", Updated_Job_List)}.
-  
-
-%% @spec setnth(Index, List, Element) -> list()
-%% @doc Replaces element on index Index with Element
-setnth(1, [_|Rest], New) -> [New|Rest];
-setnth(I, [E|Rest], New) -> [E|setnth(I-1, Rest, New)].
-
-job_step_failed(DocInfo) ->
-  UpdDocInfo = set_step_to_max(DocInfo),
-  set_job_failed(UpdDocInfo).
 
 %%==== just to have a nicer fuckning print. Hates io:format ====
 print(String) ->
