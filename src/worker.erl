@@ -2,6 +2,9 @@
 -export ([worker/0, do_work/2]).
 -include("couchbeam.hrl").
 
+%% Name:
+%% Pre :
+%% Post:
 
 worker() ->
   receive
@@ -13,6 +16,10 @@ worker() ->
       From ! {status, self(), DocInfo, {ExecTime, Status}},
       worker()
   end.
+
+%% Name:
+%% Pre :
+%% Post:
 
 do_work(DocInfo, {MaxR, MaxT, Sleep, SleepF,SleepM}) ->
   P = open_port({spawn, DocInfo#document.job_step_do}, [exit_status]),
@@ -28,6 +35,10 @@ do_work(DocInfo, {MaxR, MaxT, Sleep, SleepF,SleepM}) ->
       %%alternative do?
   end.
 
+%% Name:
+%% Pre :
+%% Post:
+
 get_status(P) ->
   receive
     {P, {exit_status, Status}} ->
@@ -36,6 +47,10 @@ get_status(P) ->
       print("This is what I got: ~p", [Any]),
       get_status(P)
   end.
+
+%% Name:
+%% Pre :
+%% Post:
 
 alternative_do(DocInfo, Status) ->
   case DocInfo#document.job_step_alt_do of
@@ -47,6 +62,10 @@ alternative_do(DocInfo, Status) ->
       {step_status, {do_status, Status}, {alt_do_status, AltStatus}}
   end.
 
+%% Name:
+%% Pre :
+%% Post:
+
 sleep_strategy(Sleep, SleepFactor, SleepMax) ->
   case Sleep of
     null ->
@@ -57,6 +76,10 @@ sleep_strategy(Sleep, SleepFactor, SleepMax) ->
       new_sleep(Sleep, SleepFactor, SleepMax)
   end.
 
+%% Name:
+%% Pre :
+%% Post:
+
 new_sleep(Sleep, SleepFactor, SleepMax) ->
   NewSleep = Sleep * SleepFactor,
   if
@@ -65,6 +88,10 @@ new_sleep(Sleep, SleepFactor, SleepMax) ->
     NewSleep >= SleepMax ->
       SleepMax
   end.
+
+%% Name:
+%% Pre :
+%% Post:
 
 retrieve_strategies(RetryStrategies) ->
   {_, MaxRetries}       = lists:keyfind(<<"max_retries">>,  1, RetryStrategies),
@@ -75,6 +102,11 @@ retrieve_strategies(RetryStrategies) ->
   {MaxRetries, MaxTime, Sleep, SleepFactor, SleepMax}.
 
 %%== just to have a nicer, quicker, print. Hates io:format
+
+%% Name:
+%% Pre :
+%% Post:
+
 print(String) ->
   print(String,[]).
 print(String, Argument_List) ->

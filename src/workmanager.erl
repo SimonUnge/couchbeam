@@ -1,12 +1,21 @@
+
 -module (workmanager).
 -export ([work_manager/2]).
 -include("couchbeam.hrl").
+  
+%% Name:
+%% Pre :
+%% Post:
 
 work_manager(N, Db) ->
   Workers = start_workers(N, []),
   KeepDocsAliveWorkerPid = start_keep_docs_alive(Db), 
   print("Length workers ~p", [length(Workers)]),
   work_manager_loop(Workers, KeepDocsAliveWorkerPid, Db).
+  
+%% Name:
+%% Pre :
+%% Post:
 
 start_workers(N, Workers) when N>0 ->
   process_flag(trap_exit, true),
@@ -14,10 +23,18 @@ start_workers(N, Workers) when N>0 ->
   start_workers(N - 1, [{WorkerPid, free, null} | Workers]);
 start_workers(0, Workers) ->
   Workers.
+  
+%% Name:
+%% Pre :
+%% Post:
 
 start_keep_docs_alive(Db) ->
   process_flag(trap_exit, true),
   spawn_link(keepdocsalive, start, [Db]).
+  
+%% Name:
+%% Pre :
+%% Post:
 
 work_manager_loop(Workers, KeepDocsAliveWorkerPid, Db) ->
   receive
@@ -71,6 +88,10 @@ work_manager_loop(Workers, KeepDocsAliveWorkerPid, Db) ->
           work_manager_loop(Workers, KeepDocsAliveWorkerPid, Db)
       end
   end.
+  
+%% Name:
+%% Pre :
+%% Post:
 
 handle_document(Db, DocId, Workers) ->
   case couchbeam:open_doc(Db, DocId) of
@@ -88,6 +109,10 @@ handle_document(Db, DocId, Workers) ->
       print("Doc deleted?..."),
       Workers
   end.
+  
+%% Name:
+%% Pre :
+%% Post:
 
 init_docinfo(Db, Doc, DocId) ->
   JobStepList = utils:get_field("job", Doc),
@@ -100,6 +125,10 @@ init_docinfo(Db, Doc, DocId) ->
     job_length = length(JobStepList)
   }.
   
+%% Name:
+%% Pre :
+%% Post:
+  
 
 handle_job(Workers, DocInfo) ->
   case is_job_complete(DocInfo) of
@@ -110,6 +139,10 @@ handle_job(Workers, DocInfo) ->
       print("Job done"),
       release_worker(Workers, DocInfo)
   end.
+  
+%% Name:
+%% Pre :
+%% Post:
 
 inspect_step_and_handle(Workers, DocInfo) ->
   case is_step_executing(DocInfo) of
@@ -121,6 +154,10 @@ inspect_step_and_handle(Workers, DocInfo) ->
       print("job is not running, inspect winner and handle:"),
       inspect_winner_and_handle(Workers, DocInfo)
   end.
+  
+%% Name:
+%% Pre :
+%% Post:
 
 handle_step_is_running(Workers, DocInfo) ->
   case is_winner(DocInfo) of %%lite galet, men det stämmer. XXX?
@@ -130,6 +167,10 @@ handle_step_is_running(Workers, DocInfo) ->
     false ->
       Workers
   end.
+  
+%% Name:
+%% Pre :
+%% Post:
 
 handle_is_executioner(Workers, DocInfo) ->
   case is_executing(Workers, DocInfo) of
@@ -140,6 +181,10 @@ handle_is_executioner(Workers, DocInfo) ->
       utils:save_doc(UpdDocInfo),
       Workers
   end.
+  
+%% Name:
+%% Pre :
+%% Post:
 
 inspect_winner_and_handle(Workers, DocInfo) ->
   case has_winner(DocInfo) of
@@ -151,6 +196,10 @@ inspect_winner_and_handle(Workers, DocInfo) ->
       print("Job does not have a winner, inspect and claim"),
       inspect_claim_and_handle(Workers, DocInfo)
   end.
+  
+%% Name:
+%% Pre :
+%% Post:
 
 handle_has_winner(Workers, DocInfo) ->
   case is_winner(DocInfo) of
@@ -164,6 +213,10 @@ handle_has_winner(Workers, DocInfo) ->
       print("I am not winner, release workers"),
       release_worker(Workers, DocInfo)
   end.
+  
+%% Name:
+%% Pre :
+%% Post:
 
 handle_is_winner(Workers, DocInfo) ->
   case have_reserved_worker(Workers, DocInfo) of
@@ -180,6 +233,10 @@ handle_is_winner(Workers, DocInfo) ->
       utils:save_doc(UpdatedDocInfo),
       Workers
   end.
+  
+%% Name:
+%% Pre :
+%% Post:
 
 inspect_claim_and_handle(Workers, DocInfo) ->
   case is_claimed(DocInfo) of
@@ -190,6 +247,10 @@ inspect_claim_and_handle(Workers, DocInfo) ->
       print("Step is not claimed, inspect target and handle..."),
       inspect_target_and_handle(Workers, DocInfo)
   end.
+  
+%% Name:
+%% Pre :
+%% Post:
 
 handle_is_claimed(Workers, DocInfo) ->
   case is_job_creator(DocInfo) of
@@ -202,6 +263,10 @@ handle_is_claimed(Workers, DocInfo) ->
       print("I am not the creator, returns workers."),
       Workers
   end.
+  
+%% Name:
+%% Pre :
+%% Post:
 
 inspect_target_and_handle(Workers, DocInfo) ->
   case is_target_any(DocInfo) of
@@ -212,6 +277,10 @@ inspect_target_and_handle(Workers, DocInfo) ->
       print("there is a specific target, handle spcigic target"),
       handle_specific_target(Workers, DocInfo)
   end.
+  
+%% Name:
+%% Pre :
+%% Post:
 
 handle_any_target(Workers, DocInfo) ->
   case has_free_workers(Workers) of
@@ -227,6 +296,10 @@ handle_any_target(Workers, DocInfo) ->
       print("No free workers, doing nothing..."),
       Workers
   end.
+  
+%% Name:
+%% Pre :
+%% Post:
 
 handle_specific_target(Workers, DocInfo) ->
   case is_target_me(DocInfo) of
@@ -237,6 +310,10 @@ handle_specific_target(Workers, DocInfo) ->
       print("I am not target, doing nothing..."),
       Workers
   end.
+  
+%% Name:
+%% Pre :
+%% Post:
 
 handle_me_target(Workers, DocInfo) ->
   case has_free_workers(Workers) of
@@ -250,12 +327,18 @@ handle_me_target(Workers, DocInfo) ->
       Workers
   end.
 %%==== Worker Helpers =====
-%%XXX ej testad?
+%% Name: give_job_to_worker
+%% Pre : There must exist a free worker
+%% Post:: returns worker-list, with one more worker busy.
 give_job_to_worker(Workers, DocInfo) ->
   {WorkerPid, free, _DocId} = utils:get_free_worker(Workers), 
   UpdDocInfo = init_docinfo_for_worker(DocInfo, WorkerPid),
   WorkerPid ! {work, self(), UpdDocInfo},
   utils:change_worker_status(WorkerPid, Workers, busy, UpdDocInfo#document.doc_id).
+
+%% Name:
+%% Pre :
+%% Post:
 
 give_job_to_reserved_worker(Workers, DocInfo) ->
   Doc_Id = DocInfo#document.doc_id,
@@ -269,6 +352,10 @@ give_job_to_reserved_worker(Workers, DocInfo) ->
       Workers
   end.
 
+%% Name:
+%% Pre :
+%% Post:
+
 init_docinfo_for_worker(DocInfo, WorkerPid) ->
   CurrentJobStep = utils:get_current_job_step(DocInfo),
   JobStepDo      = utils:get_do(CurrentJobStep),
@@ -281,11 +368,19 @@ init_docinfo_for_worker(DocInfo, WorkerPid) ->
   UpdDocInfo3 = utils:set_step_start_time(UpdDocInfo2),
   UpdDocInfo4 = utils:set_job_step_status(UpdDocInfo3, "Working"),
   utils:save_doc(UpdDocInfo4).
+  
+%% Name:
+%% Pre :
+%% Post:
 
 book_worker(Workers, DocInfo) ->
   {WorkerPid, free, _DocId} = utils:get_free_worker(Workers),
   print("booking worker ~p", [WorkerPid]),
   utils:change_worker_status(WorkerPid, Workers, booked, DocInfo#document.doc_id).
+  
+%% Name:
+%% Pre :
+%% Post:
 
 release_worker(Workers, DocInfo) ->
   Doc_Id = DocInfo#document.doc_id,
@@ -297,6 +392,10 @@ release_worker(Workers, DocInfo) ->
       print("Ah, I did not book this job"),
       Workers
   end.
+  
+%% Name:
+%% Pre :
+%% Post:
 
 remove_claim_and_winner(DocInfo) ->
   print("removing my claim"),
@@ -307,46 +406,90 @@ remove_claim_and_winner(DocInfo) ->
   UpdDocInfo3 = utils:update_job_step_list(UpdDocInfo2, "executioner", null),
   print("and step status.... now done?"),
   utils:update_job_step_list(UpdDocInfo3, "step_status", null).
+  
+%% Name:
+%% Pre :
+%% Post:
 
 %%=========================  
+  
+%% Name:
+%% Pre :
+%% Post:
 
 is_design_document(DocId) ->
   lists:prefix("_design", DocId).
+  
+%% Name:
+%% Pre :
+%% Post:
 
 is_job_complete(DocInfo) ->
   DocInfo#document.job_length < DocInfo#document.current_step + 1.
+  
+%% Name:
+%% Pre :
+%% Post:
 
 %Returns true if the job-step is claimed.
 is_claimed(DocInfo) ->
   ClaimStatus = utils:get_claim_status(DocInfo),
   null =/= ClaimStatus.
+  
+%% Name:
+%% Pre :
+%% Post:
 
 is_step_executing(DocInfo) ->
   StepStatus = utils:get_step_status(DocInfo),
   null =/= StepStatus.
+  
+%% Name:
+%% Pre :
+%% Post:
 
 has_winner(DocInfo) ->
   WinnerStatus = utils:get_winner_status(DocInfo),
   WinnerStatus =/= null.
+  
+%% Name:
+%% Pre :
+%% Post:
 
 is_winner(DocInfo) ->
   WinnerStatus = utils:get_winner_status(DocInfo),
   {_,_,DbId,_} = DocInfo#document.db,
   WinnerStatus =:= list_to_binary(DbId).
+  
+%% Name:
+%% Pre :
+%% Post:
 
 is_target_any(DocInfo) ->
   Target = utils:get_target(DocInfo),
   Target =:= "any".
+  
+%% Name:
+%% Pre :
+%% Post:
 
 is_target_me(DocInfo) ->
   Target = utils:get_target(DocInfo),
   {_,_,DbId,_} = DocInfo#document.db,
   Target =:= DbId.
+  
+%% Name:
+%% Pre :
+%% Post:
 
 is_job_creator(DocInfo) ->
   Creator = utils:get_field("creator", DocInfo#document.doc),
   {_,_,DbId,_} = DocInfo#document.db,
   Creator =:= list_to_binary(DbId).
+  
+%% Name:
+%% Pre :
+%% Post:
 
 has_free_workers(Workers) ->
   case utils:get_free_worker(Workers) of
@@ -355,6 +498,10 @@ has_free_workers(Workers) ->
     _Worker ->
       true
   end.
+  
+%% Name:
+%% Pre :
+%% Post:
 
 have_reserved_worker(Workers, DocInfo) ->
   case utils:get_reserved_worker(Workers, DocInfo) of
@@ -363,6 +510,10 @@ have_reserved_worker(Workers, DocInfo) ->
     _Worker ->
       true
   end.
+  
+%% Name:
+%% Pre :
+%% Post:
 
 is_executing(Workers, DocInfo) ->
   DocId = DocInfo#document.doc_id,
@@ -374,6 +525,11 @@ is_executing(Workers, DocInfo) ->
   end.
 
 %%==== just to have a nicer fuckning print. Hates io:format ====
+  
+%% Name:
+%% Pre :
+%% Post:
+
 print(String) ->
   print(String,[]).
 print(String, Argument_List) ->

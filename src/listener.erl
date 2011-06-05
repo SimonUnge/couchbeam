@@ -4,12 +4,21 @@
 
 -export ([start/2]).
 
+%% Name:
+%% Pre :
+%% Post:
+
 start(Db, WorkManagerPid) ->
   {ok, ReqId} = couchbeam:changes_wait(Db, self(), [{heartbeat, "5000"}]),
   print("StartRef ~p", [ReqId]),
   get_changes(ReqId, Db, WorkManagerPid).
 
 %%Starts a continuous changes stream, and sends the change notification to WorkManagerPid.
+
+%% Name:
+%% Pre :
+%% Post:
+
 get_changes(ReqId, Db, WorkManagerPid) ->
   receive
     {workmanagerpid, NewWorkManagerPid} ->
@@ -28,6 +37,11 @@ get_changes(ReqId, Db, WorkManagerPid) ->
   end.
 
 %%== just to have a nicer fuckning print. Hates io:format
+
+%% Name:
+%% Pre :
+%% Post:
+
 print(String) ->
   print(String,[]).
 print(String, Argument_List) ->

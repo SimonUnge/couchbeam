@@ -7,7 +7,7 @@ Name = "reg_a".
    application:start(couchbeam),
    Server = couchbeam:server_connection(Host, Port),
 {ok, Db} = couchbeam:open_or_create_db(Server, Name),
-{ok, Doc} = couchbeam:open_doc(Db,"2c65d2ef35f481a1677282a0c53dc3aa").
+{ok, Doc} = couchbeam:open_doc(Db,"a303813b3c5d308b96a625ee451e6c92").
 
 
 How it looks for erlang:
@@ -62,11 +62,23 @@ How it looks for erlang:
       {<<"couchrest-type">>,<<"Job">>}]}}
 
 
+Retryis looks like this:{
+                          [
+                            {<<"max_retries">>,3},
+                            {<<"max_time">>,null},
+                            {<<"sleep">>,null},
+                            {<<"sleep_factor">>,1.5},
+                            {<<"sleep_max">>,null}
+                          ]
+                        }
+
+
+
+
+
 Notes:
 
 Improvments:
 priority,
-better keep alive strategy,
 filters,
 workers dying when executing work,
-

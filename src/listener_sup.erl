@@ -3,6 +3,10 @@
 
 -export ([start/3, start/1]).
 
+%% Name:
+%% Pre :
+%% Post:
+
 start(Host, Port, Name) ->
   application:start(sasl),
   application:start(ibrowse),
@@ -25,6 +29,10 @@ start(Database) when is_atom(Database)->
       start("localhost", 5001, "global_node")
   end.
 
+%% Name:
+%% Pre :
+%% Post:
+
 receive_loop(WorkManagerPid, ListenerPid, Db) ->
   receive
     {'EXIT', WorkManagerPid, Reason} ->
@@ -38,10 +46,18 @@ receive_loop(WorkManagerPid, ListenerPid, Db) ->
       receive_loop(WorkManagerPid, NewListenerPid, Db)
   end.
 
+%% Name:
+%% Pre :
+%% Post:
+
 start_workmanager(Db) ->
   process_flag(trap_exit, true),
   WorkManagerPid = spawn_link(workmanager, work_manager, [5, Db]),
   WorkManagerPid.
+
+%% Name:
+%% Pre :
+%% Post:
 
 start_listener(Db, WorkManagerPid) ->
   process_flag(trap_exit, true),

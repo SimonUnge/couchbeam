@@ -2,11 +2,18 @@
 -export ([start/1]).
 -include("couchbeam.hrl").
 
+%% Name:
+%% Pre :
+%% Post:
+
 start(Db) ->
   {_,_,DbId,_} = Db,
   {ok, ViewObj} = couchbeam:view(Db, {"jobdoc", "unclaimed"}, [{key, list_to_atom(DbId)}]),
   keep_docs_alive(ViewObj, Db).
 
+%% Name:
+%% Pre :
+%% Post:
 
 keep_docs_alive(ViewObj, Db) ->
   timer:sleep(5000),
@@ -15,10 +22,18 @@ keep_docs_alive(ViewObj, Db) ->
   re_save_docs(UnclaimedList, Db),
   keep_docs_alive(ViewObj, Db).
 
+%% Name:
+%% Pre :
+%% Post:
+
 get_unclaimed_list(ViewObj) ->
   {ok, {ViewList}} = couchbeam_view:fetch(ViewObj),
   {<<"rows">>, UnclaimedList} = lists:keyfind(<<"rows">>, 1, ViewList),
   UnclaimedList.
+
+%% Name:
+%% Pre :
+%% Post:
 
 re_save_docs([], _Db) ->
   ok;  
