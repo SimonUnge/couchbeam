@@ -4,7 +4,7 @@
 
 %% Name:
 %% Pre :
-%% Post:
+%% Post: 
 
 worker() ->
   receive
@@ -19,7 +19,7 @@ worker() ->
 
 %% Name:
 %% Pre :
-%% Post:
+%% Post: Return status of do. On failure, retries MaxR times, then alt_do if any.
 
 do_work(DocInfo, {MaxR, MaxT, Sleep, SleepF,SleepM}) ->
   P = open_port({spawn, DocInfo#document.job_step_do}, [exit_status]),
@@ -37,7 +37,7 @@ do_work(DocInfo, {MaxR, MaxT, Sleep, SleepF,SleepM}) ->
 
 %% Name:
 %% Pre :
-%% Post:
+%% Post: Exit status from shell command.
 
 get_status(P) ->
   receive
@@ -50,7 +50,7 @@ get_status(P) ->
 
 %% Name:
 %% Pre :
-%% Post:
+%% Post: Executes the alternative do for the step, if any.
 
 alternative_do(DocInfo, Status) ->
   case DocInfo#document.job_step_alt_do of
@@ -64,7 +64,7 @@ alternative_do(DocInfo, Status) ->
 
 %% Name:
 %% Pre :
-%% Post:
+%% Post: Sleeping for sleep seconds, if not null.
 
 sleep_strategy(Sleep, SleepFactor, SleepMax) ->
   case Sleep of
@@ -77,8 +77,8 @@ sleep_strategy(Sleep, SleepFactor, SleepMax) ->
   end.
 
 %% Name:
-%% Pre :
-%% Post:
+%% Pre : Int sleep, int sleepfactor, int sleepmax.
+%% Post: int (Sleep * sleepfactor), if less than sleepmax, else sleepmax. 
 
 new_sleep(Sleep, SleepFactor, SleepMax) ->
   NewSleep = Sleep * SleepFactor,
@@ -91,7 +91,7 @@ new_sleep(Sleep, SleepFactor, SleepMax) ->
 
 %% Name:
 %% Pre :
-%% Post:
+%% Post: Sleep strategies received.
 
 retrieve_strategies(RetryStrategies) ->
   {_, MaxRetries}       = lists:keyfind(<<"max_retries">>,  1, RetryStrategies),

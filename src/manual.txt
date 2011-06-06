@@ -82,3 +82,21 @@ Improvments:
 priority,
 filters,
 workers dying when executing work,
+
+
+What to test:
+
+Ett jobb, där varje steg är sleep i X sekunder. Testa hur långt tid det tar på en nod, flera noder. fast
+det borde inte vara någon direkt skillnad där. Any node-steg
+
+Testa många jobb, där varje steg är sleep i X sekunder. Räkna ut hur lång tid det borde ta, mot hur lång 
+tid det tog. Här kan replikerings-tiden spela in. Testa att claima hos jobb-skaparen. Any node-steg
+
+Testa många jobb, där varje step är sleep i X sekunder. Testa så att det är fler jobb än workers. 
+Lägga till noder och se skillnaden i hastighet. Any node-steg
+
+Testa jobb med flera olika targets.
+
+Stress testa couchDB med massor av jobb.
+
+Testa hur lång tid det tar om allt går som det ska.

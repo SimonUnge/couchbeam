@@ -32,7 +32,7 @@ get_changes(ReqId, Db, WorkManagerPid) ->
       get_changes(ReqId, Db, WorkManagerPid);
     {ReqId, {error, E}}->
       print("error ? ~p", [E]);
-    {'ERROR', SomePid, Reason} ->
+    {'EXIT', SomePid, Reason} ->
       print("XXXSome pid, ~p, died. Reason: ~p", [SomePid, Reason])
   end.
 

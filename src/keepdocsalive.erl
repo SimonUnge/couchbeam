@@ -4,12 +4,59 @@
 
 %% Name:
 %% Pre :
-%% Post:
+%% Post: 
 
 start(Db) ->
   {_,_,DbId,_} = Db,
-  {ok, ViewObj} = couchbeam:view(Db, {"jobdoc", "unclaimed"}, [{key, list_to_atom(DbId)}]),
-  keep_docs_alive(ViewObj, Db).
+  case exist_view_doc(Db, "jobdoc") of
+    {true, view_doc_exists} ->
+      {ok, ViewObj} = couchbeam:view(Db, {"jobdoc", "unclaimed"}, [{key, list_to_atom(DbId)}]),
+      keep_docs_alive(ViewObj, Db);
+    {false, no_view_doc} ->
+      create_view_doc(Db),
+      {ok, ViewObj} = couchbeam:view(Db, {"jobdoc", "unclaimed"}, [{key, list_to_atom(DbId)}]),
+      keep_docs_alive(ViewObj, Db)
+  end.
+
+%% Name:
+%% Pre :
+%% Post: 
+
+exist_view_doc(Db, DocId) ->
+  case couchbeam:open_doc(Db, DocId) of
+    {ok, _Doc} ->
+      {true, view_doc_exists};
+    {error, not_found} ->
+      {false, no_view_doc}
+  end.
+
+%% Name:
+%% Pre :
+%% Post: A created and saved design document that fetches all docs with unclaimed steps.
+
+create_view_doc(Db) ->
+ DesignDoc = {[
+        {<<"_id">>, <<"_design/jobdoc">>},
+        {<<"language">>,<<"javascript">>},
+        {<<"views">>,
+            {[{<<"unclaimed">>,
+                {[{<<"map">>,
+                    <<"function (doc) {\n
+                        var step, job, claimed;\n
+                        if (doc.creator) {\n 
+                          step = doc.step;\n
+                          job = doc.job[step];\n
+                          claimed = job.claimed_by;\n
+                          if (claimed == null) {\n
+                            emit(doc.creator, doc._id);\n
+                          }\n
+                        }\n
+                      }">>
+                }]}
+            }]}
+        }
+    ]},
+  couchbeam:save_doc(Db, DesignDoc).
 
 %% Name:
 %% Pre :
