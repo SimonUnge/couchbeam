@@ -99,7 +99,6 @@ handle_document(Db, DocId, Workers) ->
       print("Doc was opened!"),
       CurrentStepNumber = utils:get_field("step", Doc),
       print("The current step: ~p", [CurrentStepNumber]),
-      %Här borde jag nästan läsa in allt.XXX och göra en funktion av det.
       DocInfo = init_docinfo(Db, Doc, DocId),
       print("Worker status list before handle job: ~p", [Workers]),
       UpdatedWorkers = handle_job(Workers, DocInfo),
@@ -205,8 +204,6 @@ handle_has_winner(Workers, DocInfo) ->
   case is_winner(DocInfo) of
     true ->
       print("I am winner, handle is winner"),
-      %nu ska det det finnas en worker reserverat för detta step, om det inte har krashat?
-      %SKA Test att ge den en process. Farligt? XXX
       handle_is_winner(Workers, DocInfo);
     false ->
       %frigör eventuell bokad worker.
