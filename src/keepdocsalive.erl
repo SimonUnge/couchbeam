@@ -63,7 +63,7 @@ create_view_doc(Db) ->
 %% Post:
 
 keep_docs_alive(ViewObj, Db) ->
-  timer:sleep(1000),
+  timer:sleep(5000),
   io:format("I am keep alive ~p, have just sleept 5 sec.~n",[self()]),
   UnclaimedList = get_unclaimed_list(ViewObj),
   re_save_docs(UnclaimedList, Db),
