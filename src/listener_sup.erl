@@ -52,7 +52,7 @@ receive_loop(WorkManagerPid, ListenerPid, Db) ->
 
 start_workmanager(Db) ->
   process_flag(trap_exit, true),
-  WorkManagerPid = spawn_link(workmanager, work_manager, [5, Db]),
+  WorkManagerPid = spawn_link(workmanager, work_manager, [2, Db]),
   WorkManagerPid.
 
 %% Name:
