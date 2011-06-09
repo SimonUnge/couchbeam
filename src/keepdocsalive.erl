@@ -43,13 +43,11 @@ create_view_doc(Db) ->
                 {[{<<"map">>,
                     <<"function (doc) {\n
                         var step, job, claimed;\n
-                        if (doc.creator) {\n 
-                          step = doc.step;\n
-                          job = doc.job[step];\n
-                          claimed = job.claimed_by;\n
-                          if (claimed == null) {\n
-                            emit(doc.creator, doc._id);\n
-                          }\n
+                        step = doc.step;\n
+                        job = doc.job[step];\n
+                        claimed = job.claimed_by;\n
+                        if (claimed == null) {\n
+                          emit(doc.creator, doc._id);\n
                         }\n
                       }">>
                 }]}

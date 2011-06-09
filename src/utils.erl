@@ -249,6 +249,13 @@ change_worker_status(WorkerPid, Workers, NewStatus, DocId) ->
 set_step_to_max(DocInfo) ->
   DocInfo#document{doc = set_key_on_doc(DocInfo, "step", DocInfo#document.job_length)}.
 
+set_job_complete(DocInfo) ->
+  if
+    DocInfo#document.job_length < DocInfo#document.current_step + 1 ->
+      DocInfo#document{doc = set_key_on_doc(DocInfo, "job_status", list_to_binary("Success"))
+                      }
+  end.
+
 %% Name:
 %% Pre :
 %% Post:

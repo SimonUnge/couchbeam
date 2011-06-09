@@ -48,9 +48,10 @@ work_manager_loop(Workers, KeepDocsAliveWorkerPid, Db) ->
           UpdDocInfo3 = utils:set_job_step_status(UpdDocInfo2, "Finished"),
           NewWorkers = utils:change_worker_status(WorkerPid, Workers, free, null),
           print("freed worker ~p, worker list is now: ~p",[WorkerPid, NewWorkers]),
-          UpdatedDocInfo = utils:increment_step(UpdDocInfo3),
-          print("Saving complete job step for doc: ~p", [UpdatedDocInfo#document.doc_id]),
-          utils:save_doc(UpdatedDocInfo),
+          UpdDocInfo4 = utils:increment_step(UpdDocInfo3),
+          print("Saving complete job step for doc: ~p", [UpdDocInfo4#document.doc_id]),
+          UpdDocInfo5 = utils:set_job_complete(UpdDocInfo4),
+          utils:save_doc(UpdDocInfo5),
           work_manager_loop(NewWorkers, KeepDocsAliveWorkerPid, Db);
         {step_status, {do_status, DoStatus}, {alt_do_status, null}} ->
           StepStatusString = "Failed, no alt, do status: " ++ integer_to_list(DoStatus),
