@@ -39,7 +39,6 @@ start_keep_docs_alive(Db) ->
 work_manager_loop(Workers, KeepDocsAliveWorkerPid, Db) ->
   receive
     {status, WorkerPid, DocInfo, {ExecTime, Status}} ->
-      print("The Status ~p", [Status]),
       case Status of
         {step_status, {do_status, 0}, {alt_do_status, null}} ->
           print("Status from worker ~p: ~p, on doc: ~p",[WorkerPid, Status, DocInfo#document.doc_id]),
@@ -77,6 +76,9 @@ work_manager_loop(Workers, KeepDocsAliveWorkerPid, Db) ->
       print("Keep docs alive proc died, Reason: ~p", [Reason]),
       NewKeepDocsAliveWorkerPid = start_keep_docs_alive(Db),
       work_manager_loop(Workers, NewKeepDocsAliveWorkerPid, Db);
+    {'EXIT', WorkerPid, Reason} ->
+      UpdWorkers = handle_crashed_worker(WorkerPid, Workers, Db),
+      work_manager_loop(UpdWorkers, KeepDocsAliveWorkerPid, Db);
     {changes, Change, Db} ->
       DocId = utils:get_id(Change),
       print("WM got change for doc_id: ~p,~n Will try to open.",[DocId]),
@@ -89,7 +91,7 @@ work_manager_loop(Workers, KeepDocsAliveWorkerPid, Db) ->
           work_manager_loop(Workers, KeepDocsAliveWorkerPid, Db)
       end
   end.
-  
+
 %% Name:
 %% Pre :
 %% Post:
@@ -390,6 +392,31 @@ release_worker(Workers, DocInfo) ->
       print("Ah, I did not book this job"),
       Workers
   end.
+
+handle_crashed_worker(WorkerPid, Workers, Db) ->
+  case utils:get_specific_worker(WorkerPid, Workers) of
+    {WorkerPid, free, _DocId} ->
+      UpdWorkers = lists:keydelete(WorkerPid, 1, Workers),
+      NewWorker = create_worker(),
+      [{NewWorker, free, null} | UpdWorkers];
+    {WorkerPid, booked, DocId} ->
+      UpdWorkers = lists:keydelete(WorkerPid, 1, Workers),
+      NewWorker = create_worker(),
+      [{NewWorker, booked, DocId} | UpdWorkers];
+    {WorkerPid, busy, DocId} ->
+      UpdWorkers = lists:keydelete(WorkerPid, 1, Workers),
+      {ok, Doc} = couchbeam:open_doc(Db, DocId),
+      DocInfo = init_docinfo(Db, Doc, DocId),
+      UpdDocInfo = utils:job_step_failed(DocInfo),
+      utils:save_doc(UpdDocInfo),
+      NewWorker = create_worker(),
+      [{NewWorker, free, null} | UpdWorkers]
+  end.
+
+create_worker() ->
+  process_flag(trap_exit, true),
+  spawn_link(worker, worker, []).
+
   
 %% Name:
 %% Pre :

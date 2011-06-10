@@ -11,6 +11,7 @@
           get_free_worker/1,
           get_reserved_worker/2,
           get_busy_worker/2,
+          get_specific_worker/2,
           get_current_job_step/1,
           get_claim_status/1,
           get_winner_status/1,
@@ -24,6 +25,7 @@
           set_job_step_execution_time/2,
           set_step_start_time/1,
           set_step_finish_time/1,
+          set_job_complete/1,
           change_worker_status/4,
           set_step_winner/1,
           set_step_to_max/1,
@@ -130,6 +132,13 @@ get_reserved_worker(Workers, DocInfo) ->
 
 get_busy_worker(Workers, DocInfo) ->
   lists:keyfind(DocInfo#document.doc_id, 3, Workers).
+
+%% Name:
+%% Pre :
+%% Post:
+
+get_specific_worker(Workers, WorkerPid) ->
+  lists:keyfind(WorkerPid, 1, Workers).
 
 %% Name:
 %% Pre :
@@ -251,9 +260,11 @@ set_step_to_max(DocInfo) ->
 
 set_job_complete(DocInfo) ->
   if
-    DocInfo#document.job_length < DocInfo#document.current_step + 1 ->
+    DocInfo#document.job_length =< DocInfo#document.current_step + 1 ->
       DocInfo#document{doc = set_key_on_doc(DocInfo, "job_status", list_to_binary("Success"))
-                      }
+                      };
+    DocInfo#document.job_length > DocInfo#document.current_step + 1 ->
+      DocInfo
   end.
 
 %% Name:
