@@ -82,6 +82,7 @@ work_manager_loop(Workers, KeepDocsAliveWorkerPid, Db) ->
     {changes, Change, Db} ->
       DocId = utils:get_id(Change),
       print("WM got change for doc_id: ~p,~n Will try to open.",[DocId]),
+      %%This part is now needed in new version of couchdb that came with design-filter.
       case is_design_document(DocId) of
         false ->
           UpdWorkers = handle_document(Db, DocId, Workers),
